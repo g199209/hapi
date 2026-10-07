@@ -339,6 +339,25 @@ private class Harness(
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
     @Test
+    fun `header follows detail activity and cleared requests rather than stale list badges`() = runTest {
+        val harness = Harness(this, ScriptedTransport(listOf("ok")))
+        harness.sessionStore.summaries.value = listOf(summary(100).copy(pendingRequestsCount = 1, pendingRequestKinds = listOf("permission")))
+        harness.viewModel.start()
+        harness.viewModel.uiState.first { it.header.hasSessionInfo }
+        harness.sessionStore.setDetail(detailSession().copy(thinking = true,
+            agentState = app.hapi.protocol.wire.AgentState(requests = mapOf("ask" to app.hapi.protocol.wire.AgentStateRequest(tool = "request_user_input")))))
+        val waiting = harness.viewModel.uiState.first { it.header.pendingRequestKinds == listOf("input") }
+        assertEquals(ChatSessionStatus.NeedsInput, chatSessionStatus(waiting.header, false))
+        harness.sessionStore.setDetail(detailSession().copy(thinking = true, agentState = null))
+        val working = harness.viewModel.uiState.first { it.header.thinking && it.header.pendingRequestKinds.isEmpty() }
+        assertEquals(ChatSessionStatus.Working, chatSessionStatus(working.header, false))
+        harness.sessionStore.setDetail(detailSession())
+        val idle = harness.viewModel.uiState.first { !it.header.thinking && it.header.pendingRequestKinds.isEmpty() }
+        assertEquals(ChatSessionStatus.Idle, chatSessionStatus(idle.header, false))
+        harness.viewModel.stop()
+    }
+
+    @Test
     fun `inspection cancels hidden history demand and keeps one session subscription`() = runTest {
         val transport = ScriptedTransport(listOf("ok"))
         val gate = CompletableDeferred<Unit>()

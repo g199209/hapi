@@ -577,4 +577,14 @@
     <string name="chat_group_count_web">Веб-вызовов: %1$d</string>
     <string name="chat_group_count_other">Прочих: %1$d</string>
     <string name="chat_group_count_error">Ошибок: %1$d</string>
+    <string name="chat_status_loading">Загрузка…</string>
+    <string name="chat_status_load_failed">Ошибка загрузки · Повторить</string>
+    <string name="chat_status_working">Выполняется</string>
+    <string name="chat_status_needs_input">Нужен ответ</string>
+    <string name="chat_status_needs_approval">Нужно разрешение</string>
+    <string name="chat_status_needs_attention">Разрешение и ответ</string>
+    <string name="chat_status_background">Фоновые задачи</string>
+    <string name="chat_status_idle">Ожидание</string>
+    <string name="chat_status_inactive">Нет подключения</string>
+    <string name="chat_status_archived">В архиве</string>
 </resources>

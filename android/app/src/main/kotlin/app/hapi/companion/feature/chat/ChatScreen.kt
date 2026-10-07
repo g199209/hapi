@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -280,7 +278,7 @@ internal fun ChatScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.chat_back))
                     }
                 },
-                title = { ChatTitle(state.header, reconnecting, viewModel::retry) },
+                title = { ChatTitle(state.header, reconnecting, viewModel::retry, loadFailed = state.loadFailed) },
                 actions = {
                     // Two icons max (device feedback: four icons squeezed the
                     // title out) — gear for the frequent config switches,
@@ -538,21 +536,6 @@ private fun InactiveSessionBar(onReopen: () -> Unit) {
             )
             TextButton(onClick = onReopen) { Text(stringResource(R.string.sessions_action_reopen)) }
         }
-    }
-}
-
-@Composable
-private fun ChatTitle(header: ChatHeaderUi, reconnecting: Boolean, retry: () -> Unit) {
-    Column(Modifier.heightIn(min = 48.dp).then(if (reconnecting) Modifier.clickable(onClick = retry) else Modifier),
-        verticalArrangement = Arrangement.Center) {
-        Text(header.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        // Always reserve the subtitle slot; reconnect phases never resize the transcript.
-        Text(
-            if (reconnecting) stringResource(R.string.chat_reconnecting_retry) else header.subtitle.orEmpty(),
-            style = app.hapi.companion.ui.theme.HapiTypography.caption,
-            color = if (reconnecting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

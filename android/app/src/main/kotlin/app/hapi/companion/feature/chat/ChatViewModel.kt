@@ -109,6 +109,10 @@ data class ChatHeaderUi(
     val name: String? = null,
     val active: Boolean,
     val thinking: Boolean,
+    val hasSessionInfo: Boolean = true,
+    val pendingRequestKinds: List<String> = emptyList(),
+    val backgroundTaskCount: Int = 0,
+    val lifecycleState: String? = null,
 )
 
 /** Optimistic-permission UI state layered over the reduced blocks (M3b). */
@@ -1727,7 +1731,7 @@ class ChatViewModel(
 
     private fun initialState() = ChatUiState(
         sessionId = sessionId,
-        header = ChatHeaderUi(title = sessionId.take(8), subtitle = null, active = false, thinking = false),
+        header = ChatHeaderUi(title = sessionId.take(8), subtitle = null, active = false, thinking = false, hasSessionInfo = false),
         flavor = null,
         basePath = null,
         blocks = emptyList(),
@@ -1868,6 +1872,12 @@ class ChatViewModel(
             name = detail?.metadata?.name ?: summary?.metadata?.name,
             active = detail?.active ?: summary?.active ?: false,
             thinking = detail?.thinking ?: summary?.thinking ?: false,
+            hasSessionInfo = detail != null || summary != null,
+            pendingRequestKinds = if (detail != null) {
+                app.hapi.protocol.wire.SummaryPatching.computePendingRequestKinds(detail.agentState)
+            } else summary?.pendingRequestKinds.orEmpty(),
+            backgroundTaskCount = if (detail != null) detail.backgroundTaskCount ?: 0 else summary?.backgroundTaskCount ?: 0,
+            lifecycleState = detail?.metadata?.lifecycleState ?: summary?.metadata?.lifecycleState,
         )
     }
 

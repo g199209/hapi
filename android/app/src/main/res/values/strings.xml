@@ -577,4 +577,14 @@
     <string name="chat_group_count_web">%1$d web calls</string>
     <string name="chat_group_count_other">%1$d other</string>
     <string name="chat_group_count_error">%1$d failed</string>
+    <string name="chat_status_loading">Loading…</string>
+    <string name="chat_status_load_failed">Could not load · Tap to retry</string>
+    <string name="chat_status_working">Working</string>
+    <string name="chat_status_needs_input">Needs input</string>
+    <string name="chat_status_needs_approval">Needs approval</string>
+    <string name="chat_status_needs_attention">Approval + input</string>
+    <string name="chat_status_background">Background tasks</string>
+    <string name="chat_status_idle">Idle</string>
+    <string name="chat_status_inactive">Not connected</string>
+    <string name="chat_status_archived">Archived</string>
 </resources>

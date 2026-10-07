@@ -584,4 +584,14 @@
     <string name="chat_group_count_web">网页 %1$d</string>
     <string name="chat_group_count_other">其他 %1$d</string>
     <string name="chat_group_count_error">失败 %1$d</string>
+    <string name="chat_status_loading">加载中…</string>
+    <string name="chat_status_load_failed">加载失败 · 点按重试</string>
+    <string name="chat_status_working">正在处理</string>
+    <string name="chat_status_needs_input">待回答</string>
+    <string name="chat_status_needs_approval">待审批</string>
+    <string name="chat_status_needs_attention">待审批和回答</string>
+    <string name="chat_status_background">后台运行</string>
+    <string name="chat_status_idle">空闲</string>
+    <string name="chat_status_inactive">未连接</string>
+    <string name="chat_status_archived">已归档</string>
 </resources>
