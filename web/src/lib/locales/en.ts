@@ -1,5 +1,6 @@
 export default {
   // Loading states
+  'chat.reasoning': 'Reasoning',
   'loading': 'Loading…',
   'authorizing': 'Authorizing…',
   'loading.session': 'Loading session…',

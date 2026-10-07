@@ -5,6 +5,7 @@ import { registerGeneratedImageFromPath } from '@/modules/common/generatedImages
 import { AppServerEventConverter } from '../utils/appServerEventConverter';
 import { record, string } from './gateway';
 import { codexPlanProposalId } from './plan';
+import { asyncQuestionsInput } from './asyncQuestions';
 
 export function inputText(input: unknown): string {
     if (!Array.isArray(input)) return '';
@@ -42,9 +43,14 @@ export class SharedCodexProjection {
     private readonly pendingTitles = new Map<string, string>();
     private readonly completedTitles = new Set<string>();
     private titleRevision = 0;
+    private excludedHistoryReasoning?: Set<string>;
+    private readonly hadHistory: boolean;
     constructor(private readonly session: ApiSessionClient, readonly threadId: string,
         private readonly committed: (id: string) => Promise<void>, private readonly parentThreadId?: string) {
-        if (!parentThreadId) for (const [id, turn] of Object.entries(session.getMetadata()?.conversationHistoryTurns ?? {})) this.turns.set(id, turn);
+        const metadata = session.getMetadata();
+        this.hadHistory = Object.keys(metadata?.conversationHistoryTurns ?? {}).length > 0;
+        if (metadata?.codexReasoningReplayExcluded) this.excludedHistoryReasoning = new Set(metadata.codexReasoningReplayExcluded);
+        if (!parentThreadId) for (const [id, turn] of Object.entries(metadata?.conversationHistoryTurns ?? {})) this.turns.set(id, turn);
     }
 
     turnFor(id: string): string | undefined { return this.turns.get(id); }
@@ -104,6 +110,9 @@ export class SharedCodexProjection {
             this.turnModels.set(turnId, string(p.toModel)!);
         }
         const itemId = string(item.id) ?? string(p.itemId);
+        // Root async questions are published as interactive cards by the
+        // question bridge. Do not also emit their plain-text fallback.
+        if (!this.parentThreadId && asyncQuestionsInput(item)) return;
         if (!this.parentThreadId && (method === 'item/started' || method === 'item/completed') && item.type === 'userMessage') {
             const id = string(item.clientId ?? item.clientUserMessageId) ?? (itemId ? `codex:${this.threadId}:user:${itemId}` : undefined);
             if (id) {
@@ -179,12 +188,26 @@ export class SharedCodexProjection {
     async history(thread: unknown): Promise<void> {
         const turns = record(thread).turns;
         if (!Array.isArray(turns)) return;
+        if (!this.parentThreadId && !this.excludedHistoryReasoning) {
+            const excluded = this.hadHistory ? turns.flatMap(value => {
+                const items = record(value).items;
+                return Array.isArray(items) ? items.flatMap(item => {
+                    const value = record(item);
+                    return value.type === 'reasoning' && typeof value.id === 'string' ? [value.id] : [];
+                }) : [];
+            }) : [];
+            this.excludedHistoryReasoning = new Set(excluded);
+            this.session.updateMetadata(metadata => ({ ...metadata,
+                codexReasoningReplayExcluded: metadata.codexReasoningReplayExcluded ?? excluded }));
+        }
         const titleRevision = this.titleRevision;
         let latestTitle: string | undefined;
         for (const value of turns) {
             const turn = record(value);
             if (!Array.isArray(turn.items)) continue;
             for (const item of turn.items) {
+                if (!this.parentThreadId && record(item).type === 'reasoning'
+                    && this.excludedHistoryReasoning?.has(String(record(item).id))) continue;
                 const params = { threadId: this.threadId, turnId: turn.id, item };
                 const titleKey = `${string(turn.id) ?? 'thread'}:${record(item).id}`;
                 const pendingTitle = requestedTitle(record(item));

@@ -56,6 +56,59 @@ vi.mock('../utils/buildHapiMcpBridge', () => ({ buildHapiMcpBridge: async () => 
 // Explicit opt-in: installed official binary, entirely isolated CODEX_HOME, mock Responses API only.
 describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Codex shared runtime', () => {
     afterEach(() => { vi.unstubAllEnvs(); state.sessions.clear(); state.beforeBootstrap = undefined; });
+    it('renders native async questions and queues selectable replies without a server-request callback', async () => {
+        const home = await mkdtemp('/tmp/hapi-native-async-'); state.home = home;
+        const ch = join(home, 'codex'), cwd = join(home, 'work'); await mkdir(ch); await mkdir(cwd);
+        const endpoint = `unix://${join(home, 'engine.sock')}`;
+        const requests: unknown[] = [];
+        const http = createServer((request, response) => {
+            const chunks: Buffer[] = [];
+            request.on('data', data => chunks.push(Buffer.from(data)));
+            request.on('end', () => {
+                requests.push(JSON.parse(Buffer.concat(chunks).toString()));
+                const id = randomUUID();
+                const item = requests.length === 1
+                    ? { type: 'function_call', name: 'request_user_input_async', call_id: 'async-choice', arguments: JSON.stringify({
+                        questions: [{ title: 'Choose the layout', options: ['Compact', 'Expanded'] }]
+                    }) }
+                    : { type: 'message', role: 'assistant', id: `msg_${id}`, content: [{ type: 'output_text', text: 'ASYNC_REPLY_OK' }] };
+                const events = [{ type: 'response.created', response: { id } }, { type: 'response.output_item.done', item },
+                    { type: 'response.completed', response: { id, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } } }];
+                response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+                response.end(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''));
+            });
+        });
+        await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
+        const port = (http.address() as { port: number }).port;
+        await writeFile(join(ch, 'config.toml'), `model = "gpt-6-astra"\nmodel_provider = "mock"\napproval_policy = "never"\nsandbox_mode = "read-only"\n[model_providers.mock]\nname = "Mock"\nbase_url = "http://127.0.0.1:${port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\n[analytics]\nenabled = false\n[feedback]\nenabled = false\n`);
+        vi.stubEnv('CODEX_HOME', ch);
+        const { resolveSharedCodex } = await import('./launch'); const command = resolveSharedCodex();
+        const engine = spawn(command.command, [...command.args, '-c', 'features.code_mode_host=true', '-c', 'features.send_message_to_user_async=true', '-c', 'features.default_mode_request_user_input=true', 'app-server', '--listen', endpoint], { cwd, env: process.env, stdio: 'ignore' });
+        const owner = new CodexAppServerClient({ endpoint });
+        const abort = new AbortController(); let running: Promise<void> | undefined;
+        try {
+            await vi.waitFor(async () => { await initializeSharedClient(owner); }, { timeout: 10_000 });
+            const thread = record(record(await owner.request('thread/start', { cwd, model: 'gpt-6-astra', sandbox: 'read-only', approvalPolicy: 'never' })).thread);
+            await owner.request('turn/start', { threadId: thread.id, input: [{ type: 'text', text: 'ASK ASYNC', text_elements: [] }] });
+            const { runSharedRuntime } = await import('./runtime');
+            let ready!: (value: import('./runtime').RuntimeReady) => void;
+            const readiness = new Promise<import('./runtime').RuntimeReady>(resolve => { ready = resolve; });
+            running = runSharedRuntime({ workingDirectory: cwd, appServerEndpoint: endpoint, resumeSessionId: String(thread.id) }, ready, abort.signal);
+            const attached = await Promise.race([readiness, running.then(() => { throw new Error('Runtime stopped'); })]);
+            const web = state.sessions.get(attached.sessionId)!;
+            await vi.waitFor(() => expect(Object.keys(web.state.requests ?? {}).some(id => id.startsWith('codex-async:'))).toBe(true), { timeout: 15_000 });
+            const key = Object.keys(web.state.requests!).find(id => id.startsWith('codex-async:'))!;
+            expect(web.messages).toContainEqual(expect.objectContaining({ type: 'tool-call', name: 'request_user_input', callId: key }));
+            await web.rpc.get(RPC_METHODS.Permission)!({ id: key, approved: true, answers: { '0': { answers: ['Expanded'] } } });
+            await vi.waitFor(() => expect(JSON.stringify(requests)).toContain('Choose the layout\\nExpanded'), { timeout: 15_000 });
+            expect(web.state.completedRequests?.[key]).toMatchObject({ status: 'approved', answers: { '0': { answers: ['Expanded'] } } });
+            expect(engine.exitCode).toBeNull();
+        } finally {
+            abort.abort(); await running; await owner.disconnect();
+            if (engine.exitCode === null) { engine.kill('SIGTERM'); await new Promise<void>(resolve => engine.once('exit', () => resolve())); }
+            await new Promise<void>(resolve => http.close(() => resolve())); await rm(home, { recursive: true, force: true });
+        }
+    }, 60_000);
     it('attaches to a desktop engine, preserves settings and queued input across detach, and arbitrates questions', async () => {
         const home = await mkdtemp('/tmp/hapi-external-'); state.home = home;
         const ch = join(home, 'codex'); const cwd = join(home, 'work'); await mkdir(ch); await mkdir(cwd);

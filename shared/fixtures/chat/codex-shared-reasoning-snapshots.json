@@ -1,0 +1,151 @@
+{
+    "description": "Consecutive shared-daemon reasoning snapshots form one stable card; legacy joined headings and cumulative prefixes are deduplicated without crossing turn boundaries.",
+    "expected": {
+        "blocks": [
+            {
+                "createdAt": 1755000000000,
+                "id": "codex:root:turn:item-0:agent_reasoning",
+                "kind": "agent-reasoning",
+                "localId": null,
+                "text": "**Inspect**\n\n**Build**\n\n**Verify**"
+            },
+            {
+                "createdAt": 1755000005000,
+                "id": "codex:root:next:item-5:agent_reasoning",
+                "kind": "agent-reasoning",
+                "localId": null,
+                "text": "**New turn**"
+            }
+        ],
+        "hasReadyEvent": false,
+        "latestUsage": null,
+        "visibleBlocks": [
+            {
+                "createdAt": 1755000000000,
+                "id": "codex:root:turn:item-0:agent_reasoning",
+                "kind": "agent-reasoning",
+                "localId": null,
+                "text": "**Inspect**\n\n**Build**\n\n**Verify**"
+            },
+            {
+                "createdAt": 1755000005000,
+                "id": "codex:root:next:item-5:agent_reasoning",
+                "kind": "agent-reasoning",
+                "localId": null,
+                "text": "**New turn**"
+            }
+        ]
+    },
+    "fixtureVersion": 1,
+    "input": {
+        "agentState": null,
+        "messages": [
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "id": "codex:root:turn:item-0:agent_reasoning",
+                            "message": "**Inspect**",
+                            "type": "reasoning"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000000000,
+                "id": "reasoning-row-0",
+                "localId": null,
+                "seq": 1
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "id": "codex:root:turn:item-1:agent_reasoning",
+                            "message": "**Inspect****Build**",
+                            "type": "reasoning"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000001000,
+                "id": "reasoning-row-1",
+                "localId": null,
+                "seq": 2
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "id": "codex:root:turn:item-2:agent_reasoning",
+                            "message": "**Build**",
+                            "type": "reasoning"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000002000,
+                "id": "reasoning-row-2",
+                "localId": null,
+                "seq": 3
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "id": "codex:root:turn:item-3:agent_reasoning",
+                            "message": "**Inspect**\n\n**Build**\n\n**Verify**",
+                            "type": "reasoning"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000003000,
+                "id": "reasoning-row-3",
+                "localId": null,
+                "seq": 4
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "id": "codex:root:turn:item-4:agent_reasoning",
+                            "message": "**Verify**",
+                            "type": "reasoning"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000004000,
+                "id": "reasoning-row-4",
+                "localId": null,
+                "seq": 5
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "id": "codex:root:next:item-5:agent_reasoning",
+                            "message": "**New turn**",
+                            "type": "reasoning"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000005000,
+                "id": "reasoning-row-5",
+                "localId": null,
+                "seq": 6
+            }
+        ],
+        "options": {
+            "hasMoreMessages": false
+        }
+    },
+    "name": "codex-shared-reasoning-snapshots"
+}

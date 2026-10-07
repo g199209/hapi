@@ -4,7 +4,7 @@ import type { Metadata } from '@/api/types';
 import { SharedCodexProjection } from './projection';
 
 function fixture(parentThreadId?: string, deferWrites = false) {
-    let metadata: Metadata = { path: '/repo', host: 'test', flavor: 'codex', name: 'Manual name' };
+    let metadata: Metadata = { path: '/repo', host: 'test', flavor: 'codex', name: 'Manual name', codexReasoningReplayExcluded: [] };
     const queued: Array<(value: Metadata) => Metadata> = [];
     const update = vi.fn((fn: (value: Metadata) => Metadata) => {
         if (deferWrites) queued.push(fn);

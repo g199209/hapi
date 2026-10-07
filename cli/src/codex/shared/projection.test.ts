@@ -6,7 +6,7 @@ import { codexPlanProposalId } from './plan';
 describe('shared history projection', () => {
     it.each([undefined, 'root'])('persists proposals without approval and replays the same IDs (parent: %s)', async parentThreadId => {
         const send = vi.fn();
-        const session = { getMetadata: () => ({}), sendAgentMessage: send } as unknown as ApiSessionClient;
+        const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'thread', async () => {}, parentThreadId);
         const item = { id: 'plan', type: 'plan', text: '# Final plan' };
         const params = { threadId: 'thread', turnId: 'turn', item };
@@ -33,7 +33,7 @@ describe('shared history projection', () => {
 
     it('waits for final proposal content after an active snapshot', async () => {
         const send = vi.fn();
-        const session = { getMetadata: () => ({}), sendAgentMessage: send } as unknown as ApiSessionClient;
+        const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'thread', async () => {});
         await projection.history({ turns: [{ id: 'turn', status: 'inProgress', items: [{ id: 'plan', type: 'plan', text: 'partial' }] }] });
         expect(send).not.toHaveBeenCalled();
@@ -44,7 +44,7 @@ describe('shared history projection', () => {
 
     it.each([undefined, 'root'])('emits canonical error flags for tools (parent: %s)', async parentThreadId => {
         const send = vi.fn();
-        const session = { getMetadata: () => ({}), sendAgentMessage: send } as unknown as ApiSessionClient;
+        const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'thread', async () => {}, parentThreadId);
         for (const failed of [true, false]) {
             for (const type of ['mcpToolCall', 'collabAgentToolCall']) {
@@ -61,7 +61,7 @@ describe('shared history projection', () => {
     });
     it('keeps each turn model through settings changes, reconnect replay and rerouting', async () => {
         const send = vi.fn();
-        const session = { getMetadata: () => ({}), sendAgentMessage: send } as unknown as ApiSessionClient;
+        const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'thread', async () => {});
         await projection.notification('turn/started', { threadId: 'thread', turn: { id: 'old' } }, 'model-a');
         await projection.notification('turn/started', { threadId: 'thread', turn: { id: 'new' } }, 'model-b');
@@ -82,7 +82,7 @@ describe('shared history projection', () => {
         expect(inputText([{ type: 'localImage', path: '/tmp/image.png' }])).toBe('[Image: /tmp/image.png]');
     });
     it('replays after hub reconnect using the same durable local id', async () => {
-        const send = vi.fn(); const session = { getMetadata: () => ({}), sendAgentMessage: send } as unknown as ApiSessionClient;
+        const send = vi.fn(); const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'thread', async () => {});
         const snapshot = { turns: [{ id: 'turn', status: 'completed', items: [{ id: 'item', type: 'agentMessage', text: 'complete' }] }] };
         await projection.history(snapshot); projection.reset(); await projection.history(snapshot);
@@ -90,7 +90,7 @@ describe('shared history projection', () => {
     });
     it('does not settle an active snapshot under the final message id', async () => {
         const send = vi.fn();
-        const session = { getMetadata: () => ({}), sendAgentMessage: send } as unknown as ApiSessionClient;
+        const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'thread', async () => {});
         await projection.history({ turns: [{ id: 'turn', status: 'inProgress', items: [{ id: 'item', type: 'agentMessage', text: 'partial' }] }] });
         expect(send).not.toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe('shared history projection', () => {
     });
     it('routes descendant answers into a scoped agent trace, not a root message', async () => {
         const send = vi.fn(); const user = vi.fn(); const committed = vi.fn(async () => {});
-        const session = { getMetadata: () => ({}), sendAgentMessage: send, sendUserMessage: user } as unknown as ApiSessionClient;
+        const session = { getMetadata: () => ({ codexReasoningReplayExcluded: [] }), sendAgentMessage: send, sendUserMessage: user } as unknown as ApiSessionClient;
         const projection = new SharedCodexProjection(session, 'child', committed, 'root');
         await projection.notification('item/completed', { threadId: 'child', turnId: 'turn', item: { id: 'item', type: 'agentMessage', text: 'child answer' } });
         expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'agent-run-trace', agentId: 'child', message: expect.objectContaining({ message: 'child answer' }) }), expect.any(String));

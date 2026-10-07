@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, type FC, type KeyboardEvent, type PropsWithChildren, type UIEvent } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useContext, type FC, type KeyboardEvent, type PropsWithChildren, type UIEvent } from 'react'
 import {
     useAuiState,
     type ReasoningGroupProps,
@@ -8,6 +8,8 @@ import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { cn } from '@/lib/utils'
 import { useReasoningCollapse } from '@/hooks/useReasoningCollapse'
 import { useOptionalHappyChatContext } from '@/components/AssistantChat/context'
+import { reasoningPreview } from '@/chat/codexReasoning'
+import { I18nContext } from '@/lib/i18n-context'
 import {
     MARKDOWN_CLASSNAME,
     MARKDOWN_COMPONENTS_BY_LANGUAGE,
@@ -94,6 +96,7 @@ export const ReasoningGroup: FC<HappyReasoningGroupProps> = ({
     endIndex,
 }) => {
     const [isOpen, setIsOpen] = useState(false)
+    const i18n = useContext(I18nContext)
     const scrollRef = useRef<HTMLDivElement | null>(null)
     const followLatestRef = useRef(true)
     const pointerActiveRef = useRef(false)
@@ -103,6 +106,11 @@ export const ReasoningGroup: FC<HappyReasoningGroupProps> = ({
     const isStreaming = useAuiState((state) => {
         const parts = state.message.parts.slice(startIndex, endIndex === undefined ? undefined : endIndex + 1)
         return parts.some((part) => part.type === 'reasoning' && part.status.type === 'running')
+    })
+    const preview = useAuiState((state) => {
+        const parts = state.message.parts.slice(startIndex, endIndex === undefined ? undefined : endIndex + 1)
+        const last = parts.filter(part => part.type === 'reasoning').at(-1)
+        return last?.type === 'reasoning' ? reasoningPreview(last.text ?? '') : ''
     })
     const { reasoningCollapsed } = useReasoningCollapse()
     const chatContext = useOptionalHappyChatContext()
@@ -207,6 +215,7 @@ export const ReasoningGroup: FC<HappyReasoningGroupProps> = ({
             <button
                 type="button"
                 onClick={handleToggle}
+                aria-expanded={isOpen}
                 className={cn(
                     'flex w-full items-center gap-1.5 px-3.5 py-2.5 text-left text-xs font-medium',
                     'text-[var(--app-hint)] hover:text-[var(--app-fg)]',
@@ -214,7 +223,8 @@ export const ReasoningGroup: FC<HappyReasoningGroupProps> = ({
                 )}
             >
                 <ChevronIcon open={isOpen} />
-                <span>Reasoning</span>
+                <span className="shrink-0">{i18n?.t('chat.reasoning') ?? 'Reasoning'}</span>
+                {!isOpen && preview && <span className="min-w-0 flex-1 truncate font-normal">{preview}</span>}
                 {isStreaming && (
                     <span className="ml-1 flex items-center gap-1 text-[var(--app-hint)]">
                         <ShimmerDot />

@@ -7,6 +7,17 @@ import { T0, wireMessage } from './support'
  * stream snapshots keyed by data.id.
  */
 export const codexCases: FixtureCase[] = [
+    {
+        name: 'codex-shared-reasoning-snapshots',
+        description: 'Consecutive shared-daemon reasoning snapshots form one stable card; legacy joined headings and cumulative prefixes are deduplicated without crossing turn boundaries.',
+        messages: ['**Inspect**', '**Inspect****Build**', '**Build**', '**Inspect**\n\n**Build**\n\n**Verify**', '**Verify**', '**New turn**']
+            .map((message, index) => wireMessage({
+                id: `reasoning-row-${index}`, seq: index + 1, createdAt: T0 + index * 1000,
+                content: { role: 'agent', content: { type: 'codex', data: {
+                    type: 'reasoning', id: `codex:root:${index === 5 ? 'next' : 'turn'}:item-${index}:agent_reasoning`, message,
+                } } },
+            })),
+    },
     ...([true, false] as const).map((available): FixtureCase => {
         const callId = 'codex-proposed-plan:root:turn:plan-item'
         const data = [

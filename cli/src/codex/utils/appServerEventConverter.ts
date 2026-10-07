@@ -130,6 +130,15 @@ function extractItemText(item: Record<string, unknown>): string | null {
 }
 
 function extractReasoningText(item: Record<string, unknown>): string | null {
+    // V2 exposes the authoritative summary as an array. It can contain more
+    // than the deltas observed since attaching to an already-running thread.
+    if (Array.isArray(item.summary)) {
+        const parts = item.summary.flatMap(part => {
+            const text = typeof part === 'string' ? part : asString(asRecord(part)?.text);
+            return text?.trim() ? [text] : [];
+        });
+        if (parts.length) return parts.join('\n\n');
+    }
     const direct = extractItemText(item);
     if (direct) {
         return direct;
@@ -939,6 +948,11 @@ export class AppServerEventConverter {
                 }
                 this.reasoningSectionBreakKeys.add(key);
             }
+            const buffered = this.reasoningBuffers.get(itemId);
+            if (buffered && !buffered.endsWith('\n\n')) {
+                this.reasoningBuffers.set(itemId, `${buffered}\n\n`);
+            }
+            this.lastReasoningDeltaByItemId.delete(itemId);
             events.push(scoped({ type: 'agent_reasoning_section_break' }));
             return events;
         }

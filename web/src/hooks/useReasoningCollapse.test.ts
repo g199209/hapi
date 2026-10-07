@@ -13,13 +13,13 @@ describe('useReasoningCollapse helpers', () => {
         window.localStorage.clear()
     })
 
-    it('defaults to expanded', () => {
+    it('defaults to collapsed', () => {
         expect(getInitialReasoningCollapsed()).toBe(DEFAULT_REASONING_COLLAPSED)
     })
 
     it('reads valid stored values and ignores invalid values', () => {
-        window.localStorage.setItem(STORAGE_KEY, 'true')
-        expect(getInitialReasoningCollapsed()).toBe(true)
+        window.localStorage.setItem(STORAGE_KEY, 'false')
+        expect(getInitialReasoningCollapsed()).toBe(false)
 
         window.localStorage.setItem(STORAGE_KEY, 'invalid')
         expect(getInitialReasoningCollapsed()).toBe(DEFAULT_REASONING_COLLAPSED)
@@ -31,19 +31,7 @@ describe('useReasoningCollapse', () => {
         window.localStorage.clear()
     })
 
-    it('persists the collapsed preference', () => {
-        const { result } = renderHook(() => useReasoningCollapse())
-
-        act(() => {
-            result.current.setReasoningCollapsed(true)
-        })
-
-        expect(result.current.reasoningCollapsed).toBe(true)
-        expect(window.localStorage.getItem(STORAGE_KEY)).toBe('true')
-    })
-
-    it('removes the stored preference when restored to the default', () => {
-        window.localStorage.setItem(STORAGE_KEY, 'true')
+    it('persists the expanded preference', () => {
         const { result } = renderHook(() => useReasoningCollapse())
 
         act(() => {
@@ -51,6 +39,18 @@ describe('useReasoningCollapse', () => {
         })
 
         expect(result.current.reasoningCollapsed).toBe(false)
+        expect(window.localStorage.getItem(STORAGE_KEY)).toBe('false')
+    })
+
+    it('removes the stored preference when restored to the default', () => {
+        window.localStorage.setItem(STORAGE_KEY, 'false')
+        const { result } = renderHook(() => useReasoningCollapse())
+
+        act(() => {
+            result.current.setReasoningCollapsed(true)
+        })
+
+        expect(result.current.reasoningCollapsed).toBe(true)
         expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull()
     })
 
@@ -61,10 +61,10 @@ describe('useReasoningCollapse', () => {
         const { result } = renderHook(() => useReasoningCollapse())
 
         act(() => {
-            result.current.setReasoningCollapsed(true)
+            result.current.setReasoningCollapsed(false)
         })
 
-        expect(result.current.reasoningCollapsed).toBe(true)
+        expect(result.current.reasoningCollapsed).toBe(false)
         setItemSpy.mockRestore()
     })
 
@@ -75,10 +75,10 @@ describe('useReasoningCollapse', () => {
         const { result } = renderHook(() => useReasoningCollapse())
 
         act(() => {
-            result.current.setReasoningCollapsed(false)
+            result.current.setReasoningCollapsed(true)
         })
 
-        expect(result.current.reasoningCollapsed).toBe(false)
+        expect(result.current.reasoningCollapsed).toBe(true)
         removeItemSpy.mockRestore()
     })
 
@@ -89,15 +89,15 @@ describe('useReasoningCollapse', () => {
         const first = renderHook(() => useReasoningCollapse())
 
         act(() => {
-            first.result.current.setReasoningCollapsed(true)
+            first.result.current.setReasoningCollapsed(false)
         })
-        expect(first.result.current.reasoningCollapsed).toBe(true)
+        expect(first.result.current.reasoningCollapsed).toBe(false)
 
         // A later-mounted instance must not resync over the in-memory value
         // that storage does not reflect.
         const second = renderHook(() => useReasoningCollapse())
-        expect(second.result.current.reasoningCollapsed).toBe(true)
-        expect(first.result.current.reasoningCollapsed).toBe(true)
+        expect(second.result.current.reasoningCollapsed).toBe(false)
+        expect(first.result.current.reasoningCollapsed).toBe(false)
 
         setItemSpy.mockRestore()
     })
@@ -106,18 +106,18 @@ describe('useReasoningCollapse', () => {
         const { result } = renderHook(() => useReasoningCollapse())
 
         act(() => {
-            window.localStorage.setItem(STORAGE_KEY, 'true')
+            window.localStorage.setItem(STORAGE_KEY, 'false')
             window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
         })
 
-        expect(result.current.reasoningCollapsed).toBe(true)
+        expect(result.current.reasoningCollapsed).toBe(false)
 
         act(() => {
             window.localStorage.removeItem(STORAGE_KEY)
             window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
         })
 
-        expect(result.current.reasoningCollapsed).toBe(false)
+        expect(result.current.reasoningCollapsed).toBe(true)
     })
 
     it('shares a single storage listener across all hook instances', () => {

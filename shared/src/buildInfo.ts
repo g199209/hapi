@@ -1,1 +1,1 @@
-export const APP_VERSION = '0.30.7-homelab.5'
+export const APP_VERSION = '0.30.7-homelab.6'

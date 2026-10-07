@@ -8,7 +8,7 @@ const { mockMessage, onNestedScrollFollowChange } = vi.hoisted(() => ({
     mockMessage: {
         status: null as { type: string } | null,
         content: [] as { type: string }[],
-        parts: [] as { type: string; status: { type: string } }[],
+        parts: [] as { type: string; text?: string; status: { type: string } }[],
     },
     onNestedScrollFollowChange: vi.fn(),
 }))
@@ -79,6 +79,7 @@ function renderReasoning(text: string, statusType: 'complete' | 'running' = 'com
 describe('ReasoningGroup', () => {
     beforeEach(() => {
         window.localStorage.clear()
+        window.localStorage.setItem(STORAGE_KEY, 'false')
         cleanup()
         mockMessage.status = null
         mockMessage.content = []
@@ -89,6 +90,19 @@ describe('ReasoningGroup', () => {
             return 1
         })
         vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    })
+
+    it('keeps live summaries compact by default and previews only the latest paragraph', () => {
+        window.localStorage.removeItem(STORAGE_KEY)
+        setStreaming()
+        mockMessage.parts[0].text = '**Inspect**\n\n**Verify**'
+        const { container } = renderGroup()
+        expect(isCollapsed(container)).toBe(true)
+        expect(screen.getByRole('button')).toHaveTextContent('Verify')
+        expect(screen.getByRole('button')).not.toHaveTextContent('Inspect')
+        fireEvent.click(screen.getByRole('button'))
+        expect(isCollapsed(container)).toBe(false)
+        expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true')
     })
 
     it('is collapsed by default', () => {

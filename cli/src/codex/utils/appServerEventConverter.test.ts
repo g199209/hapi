@@ -550,6 +550,24 @@ describe('AppServerEventConverter', () => {
         expect(events).toEqual([{ type: 'agent_reasoning_delta', delta: 'step' }]);
     });
 
+    it('uses authoritative V2 summaries with paragraph boundaries after a partial live attachment', () => {
+        const converter = new AppServerEventConverter();
+        converter.handleNotification('item/reasoning/summaryTextDelta', { itemId: 'r', delta: '**Partial**' });
+        expect(converter.handleNotification('item/completed', {
+            item: { id: 'r', type: 'reasoning', summary: ['**Inspect**', '**Verify**'], content: [] }
+        })).toEqual([{ type: 'agent_reasoning', text: '**Inspect**\n\n**Verify**' }]);
+    });
+
+    it('separates fallback summary parts and ignores a repeated section notification', () => {
+        const converter = new AppServerEventConverter();
+        converter.handleNotification('item/reasoning/summaryTextDelta', { itemId: 'r', delta: '**Inspect**' });
+        converter.handleNotification('item/reasoning/summaryPartAdded', { itemId: 'r', summaryIndex: 1 });
+        converter.handleNotification('item/reasoning/summaryPartAdded', { itemId: 'r', summaryIndex: 1 });
+        converter.handleNotification('item/reasoning/summaryTextDelta', { itemId: 'r', delta: '**Verify**' });
+        expect(converter.handleNotification('item/completed', { item: { id: 'r', type: 'reasoning' } }))
+            .toEqual([{ type: 'agent_reasoning', text: '**Inspect**\n\n**Verify**' }]);
+    });
+
     it('deduplicates repeated reasoning completions for the same item', () => {
         const converter = new AppServerEventConverter();
 

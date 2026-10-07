@@ -1,5 +1,6 @@
 export default {
   // Loading states
+  'chat.reasoning': '思考',
   'loading': '加载中…',
   'authorizing': '认证中…',
   'loading.session': '加载会话…',

@@ -1056,7 +1056,7 @@ func reduceTimeline(_ messages: [NormalizedMessage], context: ReducerContext) ->
     }
 
     return TimelineResult(
-        blocks: mergeCliOutputBlocks(blocks),
+        blocks: coalesceCodexReasoning(mergeCliOutputBlocks(blocks)),
         toolBlocksById: toolBlocksById,
         hasReadyEvent: hasReadyEvent
     )

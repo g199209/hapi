@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -17,6 +21,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -26,6 +35,7 @@ import app.hapi.companion.ui.theme.HapiTheme
 import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.chat.AgentReasoningBlock
 import app.hapi.protocol.chat.AgentTextBlock
+import app.hapi.protocol.chat.reasoningPreview
 
 /** Assistant prose: full-width markdown (the shared M2d1 renderer). */
 @Composable
@@ -42,30 +52,37 @@ fun AgentReasoningBlockView(block: AgentReasoningBlock, modifier: Modifier = Mod
     var expanded by rememberSaveable(block.id) { mutableStateOf(false) }
     val hint = MaterialTheme.hapi.hint
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(),
+    Surface(
+        modifier = modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Row(
-            modifier = Modifier
-                .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp),
-        ) {
-            Text(
-                text = stringResource(
-                    if (expanded) R.string.chat_reasoning_expanded else R.string.chat_reasoning_collapsed,
-                ),
-                style = MaterialTheme.typography.labelMedium,
-                color = hint,
-            )
-        }
-        if (expanded) {
-            CompositionLocalProvider(LocalContentColor provides hint) {
-                Markdown(
-                    text = block.text,
-                    modifier = Modifier.padding(start = 8.dp, top = 4.dp),
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .clickable(role = Role.Button) { expanded = !expanded }
+                    .sizeIn(minHeight = 48.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("›", modifier = Modifier.rotate(if (expanded) 90f else 0f), color = hint)
+                Text(stringResource(R.string.tool_reasoning), style = MaterialTheme.typography.labelMedium, color = hint)
+                if (!expanded) Text(
+                    text = reasoningPreview(block.text),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = hint, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                CompositionLocalProvider(LocalContentColor provides hint) {
+                    Markdown(
+                        text = block.text,
+                        modifier = Modifier.padding(14.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 20.sp),
+                    )
+                }
             }
         }
     }

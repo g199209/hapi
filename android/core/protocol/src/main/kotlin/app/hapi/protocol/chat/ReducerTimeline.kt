@@ -1062,5 +1062,5 @@ fun reduceTimeline(
         }
     }
 
-    return TimelineResult(mergeCliOutputBlocks(blocks), toolBlocksById, hasReadyEvent)
+    return TimelineResult(coalesceCodexReasoning(mergeCliOutputBlocks(blocks)), toolBlocksById, hasReadyEvent)
 }

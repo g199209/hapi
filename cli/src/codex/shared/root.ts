@@ -18,6 +18,7 @@ import { parseReasoningEffortValue } from '../utils/reasoningEffort';
 import { SharedCodexPermissions } from './permissions';
 import { SharedCodexQueue } from './queue';
 import { SharedCodexProjection, inputText } from './projection';
+import { SharedCodexAsyncQuestions } from './asyncQuestions';
 import { getCodexSystemPrompt } from '../utils/systemPrompt';
 import { record, string } from './gateway';
 import { initializeSharedClient, type SharedLaunchOptions } from './launch';
@@ -49,6 +50,7 @@ export class SharedCodexRoot {
     private permissions!: SharedCodexPermissions;
     private queue!: SharedCodexQueue;
     private projection!: SharedCodexProjection;
+    private asyncQuestions!: SharedCodexAsyncQuestions;
     private readonly children = new Map<string, SharedCodexProjection>();
     private readonly ancestry = new Map<string, string | null>();
     private heartbeat?: ReturnType<typeof setInterval>;
@@ -194,6 +196,15 @@ export class SharedCodexRoot {
             (id, input) => this.session.syncNativeQueuedMessage(id, input === null ? null : inputText(input)),
             ids => this.session.setSteerDeliveryState(ids, 'queued'));
         await this.queue.load();
+        this.asyncQuestions = new SharedCodexAsyncQuestions(this.session, threadId,
+            join(this.host.directory, `${this.session.sessionId}.questions.json`), async (id, text) => {
+                if (this.closed || this.stopping) throw new Error('Session is disconnecting');
+                this.session.sendUserMessage(text, undefined, id);
+                await this.queue.enqueue(id, buildUserInputFromMessage(text), this.interrupted);
+                if (!['queued', 'consumed'].includes(this.queue.state(id) ?? '')) throw new Error('Answer delivery is not confirmed; retry to reconcile');
+            });
+        await this.asyncQuestions.load();
+        this.permissions.setAsyncReplyHandler(reply => this.asyncQuestions.answer(reply));
         this.projection = new SharedCodexProjection(this.session, threadId, id => this.queue.committed(id));
         this.session.updateMetadata(metadata => ({ ...metadata, codexSessionId: threadId, capabilities: {
             ...metadata.capabilities, concurrentClients: true, terminal: true,
@@ -207,7 +218,8 @@ export class SharedCodexRoot {
         }));
         if (subscribe) response = record(await this.client.request('thread/resume', { threadId }));
         this.acceptSettings(response); this.acceptSettings(this.host.settingsFor(threadId) ?? {});
-        await this.projection.history(response.thread); await this.refresh(); await this.refreshChildren(true);
+        await this.projection.history(response.thread); await this.asyncQuestions.history(record(response.thread));
+        await this.refresh(); await this.refreshChildren(true);
     }
     async activate(options: SharedLaunchOptions = {}): Promise<void> {
         // Restored input cannot run before the cold-resume settings are applied.
@@ -278,6 +290,10 @@ export class SharedCodexRoot {
         }
         if (method === 'thread/archived') { await this.host.end(this, false); return; }
         if (method === 'thread/queue/changed') await this.queue.reconcile();
+        if (method === 'item/completed') {
+            await this.asyncQuestions.receive(record(p.item));
+            if (record(p.item).type === 'userMessage') await this.asyncQuestions.userMessage(record(p.item));
+        }
         await this.projection.notification(method, params, modelAtReceipt); this.alive();
     }
     async readThread(threadId = this.threadId): Promise<Record<string, unknown>> {
@@ -308,7 +324,7 @@ export class SharedCodexRoot {
             const id = string(last?.id);
             this.latestTurn = id && last ? { id, status: string(last.status) ?? 'unknown', planId: planProposalForTurn(this.threadId, last) } : undefined;
         }
-        await this.projection.history(thread); await this.queue.reconcile(); this.alive();
+        await this.projection.history(thread); await this.asyncQuestions.history(thread); await this.queue.reconcile(); this.alive();
     }
     private async refreshChildren(subscribe: boolean): Promise<void> {
         let cursor: string | undefined;
@@ -353,6 +369,7 @@ export class SharedCodexRoot {
                     await initializeSharedClient(this.client, this.host.externalHome);
                     if (this.stopping) return;
                     this.permissions = new SharedCodexPermissions(this.session, this.client, `${this.host.generation}:${randomUUID()}`);
+                    this.permissions.setAsyncReplyHandler(reply => this.asyncQuestions.answer(reply));
                     this.client.setServerRequestHandler(request => { void this.receiveRequest(request); });
                     const settingsRevision = this.settingsRevision;
                     const response = record(await this.client.request('thread/resume', { threadId: this.threadId }));

@@ -120,7 +120,7 @@ val LocalMarkdownLinkHandler = staticCompositionLocalOf<MarkdownLinkHandler> { N
  * monospace text.
  */
 @Composable
-fun Markdown(text: String, modifier: Modifier = Modifier) {
+fun Markdown(text: String, modifier: Modifier = Modifier, textStyle: TextStyle? = null) {
     val cache = LocalMarkdownRenderCache.current
     val parsed = if (cache == null) {
         remember(text) { prepareDocument(text) }
@@ -132,7 +132,7 @@ fun Markdown(text: String, modifier: Modifier = Modifier) {
         }
         cache.cached(text) ?: prepared
     }
-    val baseStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp)
+    val baseStyle = textStyle ?: MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp)
     CompositionLocalProvider(LocalTextStyle provides baseStyle) {
         Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (parsed != null) MarkdownBlockChildren(parsed.document, parsed)

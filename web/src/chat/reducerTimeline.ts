@@ -1,4 +1,5 @@
 import type { AgentEventBlock, AgentReasoningBlock, AgentTextBlock, ChatBlock, CliOutputBlock, CodexReviewBlock, RoundSummary, ToolCallBlock, ToolPermission, UserTextBlock } from '@/chat/types'
+import { coalesceCodexReasoning } from './codexReasoning'
 import type { TracedMessage } from '@/chat/tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks } from '@/chat/reducerCliOutput'
 import { parseMessageAsEvent } from '@/chat/reducerEvents'
@@ -1125,5 +1126,5 @@ export function reduceTimeline(
         }
     }
 
-    return { blocks: mergeCliOutputBlocks(blocks), toolBlocksById, hasReadyEvent }
+    return { blocks: coalesceCodexReasoning(mergeCliOutputBlocks(blocks)), toolBlocksById, hasReadyEvent }
 }
