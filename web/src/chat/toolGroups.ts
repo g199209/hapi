@@ -234,27 +234,36 @@ export function isEligibleForToolGrouping(block: ToolCallBlock): boolean {
     return true
 }
 
-function getGroupingFamily(block: ToolCallBlock): 'default' | 'codex-exploration' | null {
-    if (!isEligibleForToolGrouping(block)) return null
-    return isCodexExplorationTool(block) ? 'codex-exploration' : 'default'
-}
-
 function createToolGroupId(
     tools: ToolCallBlock[],
     needsOlderHistory: boolean,
-    previousGroups: ToolGroupBlock[]
+    previousGroups: ToolGroupBlock[],
+    reservedGroupIds: Set<string>,
+    usedIds: Set<string>
 ): string {
     const firstToolId = tools[0]?.id ?? 'unknown'
     const lastToolId = tools[tools.length - 1]?.id ?? firstToolId
 
-    const previous = previousGroups.find((group) => group.firstToolId === firstToolId || group.lastToolId === lastToolId)
+    const previous = previousGroups.find(group =>
+        (group.firstToolId === firstToolId || group.lastToolId === lastToolId) && !usedIds.has(group.id))
     if (previous) {
+        usedIds.add(previous.id)
         return previous.id
     }
-
-    return needsOlderHistory
-        ? `tool-group:${lastToolId}`
-        : `tool-group:${firstToolId}`
+    const boundaries = needsOlderHistory ? [lastToolId, firstToolId] : [firstToolId, lastToolId]
+    for (const boundary of boundaries) {
+        const candidate = `tool-group:${boundary}`
+        if (!reservedGroupIds.has(candidate) && !usedIds.has(candidate)) {
+            usedIds.add(candidate)
+            return candidate
+        }
+    }
+    const base = `tool-group:${boundaries[0]}`
+    let suffix = 2
+    while (reservedGroupIds.has(`${base}#${suffix}`) || usedIds.has(`${base}#${suffix}`)) suffix++
+    const id = `${base}#${suffix}`
+    usedIds.add(id)
+    return id
 }
 
 export function isToolGroupBlock(block: VisibleChatBlock | ChatBlock): block is ToolGroupBlock {
@@ -267,6 +276,8 @@ export function buildVisibleChatBlocks(
 ): VisibleChatBlock[] {
     const visibleBlocks: VisibleChatBlock[] = []
     const previousGroups = options.previousGroups ?? []
+    const reservedGroupIds = new Set(previousGroups.map(group => group.id))
+    const usedIds = new Set(blocks.map(block => block.id))
 
     for (let index = 0; index < blocks.length; index += 1) {
         const block = blocks[index]
@@ -274,8 +285,7 @@ export function buildVisibleChatBlocks(
             visibleBlocks.push(block)
             continue
         }
-        const groupingFamily = getGroupingFamily(block)
-        if (!groupingFamily) {
+        if (!isEligibleForToolGrouping(block)) {
             visibleBlocks.push(block)
             continue
         }
@@ -284,18 +294,20 @@ export function buildVisibleChatBlocks(
         let cursor = index + 1
         while (cursor < blocks.length) {
             const candidate = blocks[cursor]
-            if (candidate.kind !== 'tool-call' || getGroupingFamily(candidate) !== groupingFamily) {
+            if (candidate.kind !== 'tool-call' || !isEligibleForToolGrouping(candidate)) {
                 break
             }
             tools.push(candidate)
             cursor += 1
         }
 
-        if (tools.length < 2 && groupingFamily !== 'codex-exploration') {
+        if (tools.length < 2) {
             visibleBlocks.push(block)
             continue
         }
 
+        // Classification changes presentation only, never a consecutive run's boundary.
+        const groupingFamily = tools.every(isCodexExplorationTool) ? 'codex-exploration' : 'default'
         const startsAtOldestVisibleBoundary = visibleBlocks.length === 0
         const needsOlderHistory = options.hasMoreMessages && startsAtOldestVisibleBoundary
         const previousBlock = visibleBlocks.at(-1)
@@ -305,7 +317,7 @@ export function buildVisibleChatBlocks(
             : null
         visibleBlocks.push({
             kind: 'tool-group',
-            id: createToolGroupId(tools, needsOlderHistory, previousGroups),
+            id: createToolGroupId(tools, needsOlderHistory, previousGroups, reservedGroupIds, usedIds),
             createdAt: tools[0].createdAt,
             invokedAt: tools[0].invokedAt,
             firstToolId: tools[0].id,

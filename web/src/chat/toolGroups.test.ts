@@ -170,7 +170,40 @@ describe('Codex activity headings', () => {
 })
 
 describe('buildVisibleChatBlocks', () => {
-    it('renders one or more structured Codex exploration commands as a collapsed exploration group', () => {
+    it('keeps single exploration commands standalone just like single terminal and edit calls', () => {
+        const read = makeToolBlock('read', 'CodexBash', {
+            command: 'cat a.ts', command_actions: [{ type: 'read', command: 'cat a.ts', path: '/repo/a.ts', name: 'a.ts' }]
+        })
+        for (const tool of [read, makeToolBlock('command', 'CodexBash'), makeToolBlock('patch', 'CodexPatch')]) {
+            expect(buildVisibleChatBlocks([tool], { hasMoreMessages: false })).toEqual([tool])
+        }
+    })
+
+    it('keeps reasoning and prose as group boundaries while preserving all mixed-tool state', () => {
+        const a = makeToolBlock('a', 'Read'), b = makeToolBlock('b', 'CodexPatch')
+        const c = makeToolBlock('c', 'CodexBash'), d = makeToolBlock('d', 'Grep')
+        c.tool.state = 'running'; d.tool.state = 'error'
+        const thinking = { kind: 'agent-reasoning', id: 'thinking', localId: null, createdAt: 1, text: 'Check results' } as ChatBlock
+        const prose = makeTextBlock('prose')
+        const visible = buildVisibleChatBlocks([a, b, thinking, c, d, prose], { hasMoreMessages: false })
+        expect(visible.map(x => x.kind)).toEqual(['tool-group', 'agent-reasoning', 'tool-group', 'agent-text'])
+        expect(isToolGroupBlock(visible[2]) && visible[2].summary).toMatchObject({ totalTools: 2, runningCount: 1, errorCount: 1 })
+    })
+
+    it('does not reuse one group ID twice when a pending approval splits a mixed run', () => {
+        const tools = ['a', 'b', 'c', 'd', 'e'].map(id => makeToolBlock(id, id === 'b' ? 'CodexPatch' : 'CodexBash'))
+        const previousGroups = buildVisibleChatBlocks(tools, { hasMoreMessages: false }).filter(isToolGroupBlock)
+        tools[2].tool.permission = { id: 'approval', status: 'pending' }
+        const split = buildVisibleChatBlocks(tools, { hasMoreMessages: false, previousGroups })
+        expect(split.map(x => x.kind)).toEqual(['tool-group', 'tool-call', 'tool-group'])
+        expect(new Set(split.map(x => x.id)).size).toBe(split.length)
+        expect(split[0].id).toBe(previousGroups[0].id)
+        tools[2].tool.permission = undefined
+        const joined = buildVisibleChatBlocks(tools, { hasMoreMessages: false, previousGroups: split.filter(isToolGroupBlock) })
+        expect(joined).toHaveLength(1)
+        expect(joined[0].id).toBe(split[0].id)
+    })
+    it('renders consecutive structured Codex exploration commands as a collapsed exploration group', () => {
         const read = makeToolBlock('codex-read', 'CodexBash', {
             command: 'cat package.json',
             command_source: 'agent',
@@ -217,7 +250,7 @@ describe('buildVisibleChatBlocks', () => {
         expect(isToolGroupBlock(visible[0]) && visible[0].defaultOpen).toBe(true)
     })
 
-    it('keeps structured general Codex commands separate from exploration groups', () => {
+    it('combines exploration commands, terminal commands and patches in their original order', () => {
         const read = makeToolBlock('codex-read', 'CodexBash', {
             command: 'cat package.json',
             command_actions: [{
@@ -244,11 +277,9 @@ describe('buildVisibleChatBlocks', () => {
         const patch = makeToolBlock('codex-patch', 'CodexPatch', { changes: {} })
         const visible = buildVisibleChatBlocks([read, test, patch, nextRead], { hasMoreMessages: false })
 
-        expect(visible).toHaveLength(3)
-        expect(isToolGroupBlock(visible[0]) && visible[0].presentationMode).toBe('codex-exploration')
-        expect(isToolGroupBlock(visible[1]) && visible[1].presentationMode).toBe('default')
-        expect(isToolGroupBlock(visible[1]) && visible[1].tools).toEqual([test, patch])
-        expect(isToolGroupBlock(visible[2]) && visible[2].presentationMode).toBe('codex-exploration')
+        expect(visible).toHaveLength(1)
+        expect(isToolGroupBlock(visible[0]) && visible[0].presentationMode).toBe('default')
+        expect(isToolGroupBlock(visible[0]) && visible[0].tools).toEqual([read, test, patch, nextRead])
     })
 
     it.each(['command_actions', 'commandActions'])('groups shared Codex commands and patches with legacy tools (%s)', (actionsKey) => {

@@ -75,7 +75,7 @@ function claudeToolResult(init: {
 export const toolGroupCases: FixtureCase[] = [
     {
         name: 'tool-group-codex-shared-commands',
-        description: 'Shared Codex unknown/mixed command actions select the default group, not a grouping boundary. Keep commands, patches and legacy hook calls together, preserve live/error state, and keep exploration groups separate.',
+        description: 'Shared Codex unknown/mixed command actions select the default group, not a grouping boundary. Keep commands, patches and legacy hook calls together, preserve live/error state, and include adjacent exploration commands in the same run.',
         messages: [
             { type: 'tool-call', name: 'CodexBash', callId: 'explore-before', input: {
                 command: 'cat README.md', command_source: 'agent',

@@ -1,5 +1,5 @@
 {
-    "description": "Shared Codex unknown/mixed command actions select the default group, not a grouping boundary. Keep commands, patches and legacy hook calls together, preserve live/error state, and keep exploration groups separate.",
+    "description": "Shared Codex unknown/mixed command actions select the default group, not a grouping boundary. Keep commands, patches and legacy hook calls together, preserve live/error state, and include adjacent exploration commands in the same run.",
     "expected": {
         "blocks": [
             {
@@ -153,7 +153,7 @@
                 "firstToolId": "explore-before",
                 "id": "tool-group:explore-before",
                 "kind": "tool-group",
-                "lastToolId": "explore-before",
+                "lastToolId": "explore-after",
                 "tools": [
                     {
                         "createdAt": 1755000000000,
@@ -178,16 +178,7 @@
                             "result": "Readme",
                             "state": "completed"
                         }
-                    }
-                ]
-            },
-            {
-                "createdAt": 1755000002000,
-                "firstToolId": "shared-command",
-                "id": "tool-group:shared-command",
-                "kind": "tool-group",
-                "lastToolId": "legacy-command",
-                "tools": [
+                    },
                     {
                         "createdAt": 1755000002000,
                         "id": "shared-command",
@@ -283,16 +274,7 @@
                             "name": "CodexBash",
                             "state": "running"
                         }
-                    }
-                ]
-            },
-            {
-                "createdAt": 1755000009000,
-                "firstToolId": "explore-after",
-                "id": "tool-group:explore-after",
-                "kind": "tool-group",
-                "lastToolId": "explore-after",
-                "tools": [
+                    },
                     {
                         "createdAt": 1755000009000,
                         "id": "explore-after",

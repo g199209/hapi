@@ -211,11 +211,6 @@ fun isEligibleForToolGrouping(block: ToolCallBlock): Boolean {
     return true
 }
 
-private fun getGroupingFamily(block: ToolCallBlock): String? {
-    if (!isEligibleForToolGrouping(block)) return null
-    return if (isCodexExplorationTool(block)) "codex-exploration" else "default"
-}
-
 private fun createToolGroupId(
     tools: List<ToolCallBlock>,
     needsOlderHistory: Boolean,
@@ -271,8 +266,7 @@ fun buildVisibleChatBlocks(
             index += 1
             continue
         }
-        val groupingFamily = getGroupingFamily(block)
-        if (groupingFamily == null) {
+        if (!isEligibleForToolGrouping(block)) {
             visibleBlocks.add(block)
             index += 1
             continue
@@ -282,19 +276,20 @@ fun buildVisibleChatBlocks(
         var cursor = index + 1
         while (cursor < blocks.size) {
             val candidate = blocks[cursor]
-            if (candidate !is ToolCallBlock || getGroupingFamily(candidate) != groupingFamily) {
+            if (candidate !is ToolCallBlock || !isEligibleForToolGrouping(candidate)) {
                 break
             }
             tools.add(candidate)
             cursor += 1
         }
 
-        if (tools.size < 2 && groupingFamily != "codex-exploration") {
+        if (tools.size < 2) {
             visibleBlocks.add(block)
             index += 1
             continue
         }
 
+        val groupingFamily = if (tools.all(::isCodexExplorationTool)) "codex-exploration" else "default"
         val startsAtOldestVisibleBoundary = visibleBlocks.isEmpty()
         val needsOlderHistory = options.hasMoreMessages && startsAtOldestVisibleBoundary
         val previousBlock = visibleBlocks.lastOrNull()

@@ -577,4 +577,11 @@
     <string name="chat_tool_resolved">已处理</string>
     <string name="chat_plan_implement">执行计划</string>
     <string name="chat_plan_continue">继续规划</string>
+    <string name="chat_group_count_mutation">更改 %1$d</string>
+    <string name="chat_group_count_read">读取 %1$d</string>
+    <string name="chat_group_count_command">命令 %1$d</string>
+    <string name="chat_group_count_search">搜索 %1$d</string>
+    <string name="chat_group_count_web">网页 %1$d</string>
+    <string name="chat_group_count_other">其他 %1$d</string>
+    <string name="chat_group_count_error">失败 %1$d</string>
 </resources>

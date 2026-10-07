@@ -297,11 +297,6 @@ public func isEligibleForToolGrouping(_ block: ToolCallBlock) -> Bool {
     return true
 }
 
-private func getGroupingFamily(_ block: ToolCallBlock) -> ToolGroupBlock.PresentationMode? {
-    guard isEligibleForToolGrouping(block) else { return nil }
-    return isCodexExplorationTool(block) ? .codexExploration : .default
-}
-
 /// Boundary-based identity reuse, with native list uniqueness guarantees:
 /// splits may claim an old ID only once; fresh runs cannot steal a later
 /// group's historical ID. No row-index or random IDs (scroll-anchor stability).
@@ -359,7 +354,7 @@ public func buildVisibleChatBlocks(
             index += 1
             continue
         }
-        guard let groupingFamily = getGroupingFamily(toolBlock) else {
+        guard isEligibleForToolGrouping(toolBlock) else {
             visibleBlocks.append(.block(block))
             index += 1
             continue
@@ -369,19 +364,20 @@ public func buildVisibleChatBlocks(
         var cursor = index + 1
         while cursor < blocks.count {
             guard case .toolCall(let candidate) = blocks[cursor],
-                  getGroupingFamily(candidate) == groupingFamily else {
+                  isEligibleForToolGrouping(candidate) else {
                 break
             }
             tools.append(candidate)
             cursor += 1
         }
 
-        if tools.count < 2 && groupingFamily != .codexExploration {
+        if tools.count < 2 {
             visibleBlocks.append(.block(block))
             index += 1
             continue
         }
 
+        let groupingFamily: ToolGroupBlock.PresentationMode = tools.allSatisfy { isCodexExplorationTool($0) } ? .codexExploration : .default
         let startsAtOldestVisibleBoundary = visibleBlocks.isEmpty
         let needsOlderHistory = options.hasMoreMessages && startsAtOldestVisibleBoundary
         let activityTitle: String? = {

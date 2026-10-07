@@ -8,7 +8,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -18,7 +17,7 @@ import app.hapi.companion.R
 import app.hapi.companion.ui.theme.HapiTheme
 import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.chat.ToolGroupBlock
-import app.hapi.protocol.chat.ToolGroupSummary
+import app.hapi.protocol.chat.ToolGroupActionKind
 
 /** A group always occupies one transcript row; browsing belongs to the inspector. */
 @Composable
@@ -26,9 +25,7 @@ fun ToolGroupBlockView(block: ToolGroupBlock, basePath: String?, modifier: Modif
     val inspection = app.hapi.companion.feature.chat.LocalChatInspection.current
     val title = if (block.summary.totalTools == 1) stringResource(R.string.chat_group_tools_one)
         else stringResource(R.string.chat_group_tools_many, block.summary.totalTools)
-    val summary = remember(block.summary, block.activityTitle) {
-        listOfNotNull(block.activityTitle, groupSummaryText(block).takeIf { it.isNotEmpty() }).joinToString(" · ").take(240)
-    }
+    val summary = listOfNotNull(block.activityTitle, groupSummaryText(block).takeIf { it.isNotEmpty() }).joinToString(" · ")
     Surface(
         shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier.fillMaxWidth(),
@@ -45,15 +42,23 @@ fun ToolGroupBlockView(block: ToolGroupBlock, basePath: String?, modifier: Modif
     }
 }
 
-/** "file, other-file +2 · 1 command" style digest from the group summary. */
+/** Describe actions, rather than treating a whole shell script as a file path. */
+@Composable
 private fun groupSummaryText(block: ToolGroupBlock): String {
-    val summary: ToolGroupSummary = block.summary
-    val targets = (summary.fileTargets + summary.searchTargets + summary.commandTargets +
-        summary.urlTargets + summary.otherTargets)
-    if (targets.isEmpty()) return ""
-    val shown = targets.take(3).joinToString(", ") { it.substringAfterLast('/').ifEmpty { it } }
-    val more = targets.size - 3
-    return if (more > 0) "$shown +$more" else shown
+    val labels = listOf(
+        ToolGroupActionKind.MUTATION to R.string.chat_group_count_mutation,
+        ToolGroupActionKind.READ to R.string.chat_group_count_read,
+        ToolGroupActionKind.COMMAND to R.string.chat_group_count_command,
+        ToolGroupActionKind.SEARCH to R.string.chat_group_count_search,
+        ToolGroupActionKind.WEB to R.string.chat_group_count_web,
+        ToolGroupActionKind.OTHER to R.string.chat_group_count_other,
+    )
+    val parts = labels.mapNotNull { (kind, label) ->
+        val count = block.summary.countsByKind[kind] ?: 0
+        if (count > 0) stringResource(label, count) else null
+    }.toMutableList()
+    if (block.summary.errorCount > 0) parts.add(stringResource(R.string.chat_group_count_error, block.summary.errorCount))
+    return parts.joinToString(" · ")
 }
 
 @Preview(showBackground = true)

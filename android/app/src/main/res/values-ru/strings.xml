@@ -570,4 +570,11 @@
     <string name="sessions_filter_summary">Фильтр: %1$s</string>
     <string name="privacy_policy">Политика конфиденциальности</string>
     <string name="privacy_open_failed">Нет приложения, способного открыть эту ссылку.</string>
+    <string name="chat_group_count_mutation">Изменений: %1$d</string>
+    <string name="chat_group_count_read">Чтений: %1$d</string>
+    <string name="chat_group_count_command">Команд: %1$d</string>
+    <string name="chat_group_count_search">Поисков: %1$d</string>
+    <string name="chat_group_count_web">Веб-вызовов: %1$d</string>
+    <string name="chat_group_count_other">Прочих: %1$d</string>
+    <string name="chat_group_count_error">Ошибок: %1$d</string>
 </resources>

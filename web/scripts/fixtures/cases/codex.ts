@@ -434,7 +434,7 @@ export const codexCases: FixtureCase[] = [
     },
     {
         name: 'codex-exploration-tool-group',
-        description: 'Codex exploration grouping family: consecutive CodexBash calls whose command_actions are all read/listFiles/search (and command_source is not userShell) collapse into one tool-group in visibleBlocks — a family boundary distinct from the default read/search grouping.',
+        description: 'Codex exploration grouping family: consecutive CodexBash calls whose command_actions are all read/listFiles/search (and command_source is not userShell) collapse into one tool-group in visibleBlocks; classification changes presentation but does not split adjacent terminal commands or file edits.',
         messages: [
             wireMessage({
                 id: 'msg-user-571',
