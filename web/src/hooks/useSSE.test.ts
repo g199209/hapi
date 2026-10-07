@@ -71,6 +71,24 @@ describe('useSSE connection liveness (mobile suspend/resume)', () => {
         vi.useRealTimers()
     })
 
+    it('updates previews from global SSE without opening detail or refetching the list', () => {
+        const client = new QueryClient()
+        const session = makeSummary({ lastMessagePreview: 'Old preview' })
+        client.setQueryData(['sessions'], { sessions: [session] })
+        const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
+        const view = renderHook(() => useSSE({ enabled: true, token: 'test', baseUrl: 'http://hub.test',
+            subscription: { all: true }, scope: 'global', onEvent: () => {} }), { wrapper })
+        const push = (text: string) => act(() => FakeEventSource.instances[0].simulateMessage({
+            type: 'session-updated', sessionId: session.id, data: { lastMessagePreview: text },
+        }))
+        push('New response')
+        expect(client.getQueryData<{ sessions: SessionSummary[] }>(['sessions'])?.sessions[0].lastMessagePreview).toBe('New response')
+        push('')
+        expect(client.getQueryData<{ sessions: SessionSummary[] }>(['sessions'])?.sessions[0].lastMessagePreview).toBe('')
+        expect(client.getQueryState(['sessions'])?.isInvalidated).toBe(false)
+        view.unmount()
+    })
+
     it('reconnects on visibility resume when a heartbeat interval was missed', () => {
         const onDisconnect = vi.fn()
         const { unmount } = renderUseSSE({ onDisconnect })

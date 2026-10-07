@@ -170,6 +170,7 @@ public enum SummaryPatching {
         SessionSummary(
             id: session.id,
             active: session.active,
+            lastMessagePreview: session.lastMessagePreview,
             thinking: session.thinking,
             activeAt: session.activeAt,
             updatedAt: session.updatedAt,
@@ -222,6 +223,7 @@ public enum SummaryPatching {
         var next = current
         next.active = patch.active ?? current.active
         next.thinking = patch.thinking ?? current.thinking
+        next.lastMessagePreview = patch.lastMessagePreview ?? current.lastMessagePreview
         next.activeAt = patch.activeAt ?? current.activeAt
         next.updatedAt = patch.updatedAt.map { max(current.updatedAt, $0) } ?? current.updatedAt
         next.backgroundTaskCount = patch.backgroundTaskCount ?? current.backgroundTaskCount
@@ -291,6 +293,7 @@ public enum SummaryPatching {
     public static func isRenderIrrelevantPatch(current: SessionSummary, next: SessionSummary) -> Bool {
         if current.active != next.active { return false }
         if current.thinking != next.thinking { return false }
+        if current.lastMessagePreview != next.lastMessagePreview { return false }
         if current.updatedAt != next.updatedAt { return false }
         if current.backgroundTaskCount != next.backgroundTaskCount { return false }
         if current.model != next.model { return false }

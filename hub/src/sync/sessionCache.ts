@@ -7,6 +7,7 @@ import { EventPublisher } from './eventPublisher'
 import { extractTodoWriteTodosFromMessageContent, TodosSchema } from './todos'
 import { extractBackgroundTaskDelta } from './backgroundTasks'
 import { resolveSessionIdleTimeoutMs, shouldClearKeepaliveIdle, shouldMarkKeepaliveIdle } from './sessionIdle'
+import { latestMessagePreview } from './messagePreview'
 
 const QUEUED_MESSAGE_THINKING_GRACE_MS = 15_000
 // tiann/hapi#919: metadata writers (renameSession, clearSessionArchiveMetadata,
@@ -210,6 +211,7 @@ export class SessionCache {
         })()
 
         const session: Session = {
+            lastMessagePreview: latestMessagePreview(this.store, sessionId),
             hasConversationContent: this.store.messages.hasConversationContent(sessionId),
             id: stored.id,
             namespace: stored.namespace,
@@ -259,6 +261,16 @@ export class SessionCache {
             session.hasConversationContent = hasContent
             this.publisher.emit({ type: 'session-updated', sessionId, data: { ...session } })
         }
+    }
+
+    refreshMessagePreview(sessionId: string): void {
+        const session = this.sessions.get(sessionId)
+        if (!session) return
+        const preview = latestMessagePreview(this.store, sessionId)
+        if (session.lastMessagePreview === preview) return
+        session.lastMessagePreview = preview
+        this.publisher.emit({ type: 'session-updated', sessionId, namespace: session.namespace,
+            data: { lastMessagePreview: preview } satisfies SessionPatch })
     }
 
     reloadAll(): void {
@@ -351,6 +363,7 @@ export class SessionCache {
 
         const patch = parsed.data
 
+        if (patch.lastMessagePreview !== undefined) session.lastMessagePreview = patch.lastMessagePreview
         if (patch.active !== undefined) session.active = patch.active
         if (patch.thinking !== undefined) session.thinking = patch.thinking
         if (patch.activeAt !== undefined) session.activeAt = patch.activeAt

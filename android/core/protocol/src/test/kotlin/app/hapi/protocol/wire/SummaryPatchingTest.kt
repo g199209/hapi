@@ -16,6 +16,18 @@ import kotlin.test.assertTrue
  */
 class SummaryPatchingTest {
 
+    @Test fun previewPatchesUpdateTheListWithoutChangingTitlesOrNeedingDetail() {
+        val original = makeSummary(metadata = SessionSummaryMetadata(path = "/repo", name = "Fixed title"))
+            .copy(lastMessagePreview = "Old preview")
+        val updated = SummaryPatching.applySessionSummaryPatch(original, SessionPatch(lastMessagePreview = "Latest reply"))
+        assertEquals("Latest reply", updated.lastMessagePreview)
+        assertEquals("Fixed title", updated.metadata?.name)
+        assertFalse(SummaryPatching.isRenderIrrelevantPatch(original, updated))
+        val cleared = SummaryPatching.applySessionSummaryPatch(updated, SessionPatch(lastMessagePreview = ""))
+        assertEquals("", cleared.lastMessagePreview)
+        assertFalse(SummaryPatching.isRenderIrrelevantPatch(updated, cleared))
+    }
+
     private fun makeSummary(
         id: String = "session-1",
         active: Boolean = true,

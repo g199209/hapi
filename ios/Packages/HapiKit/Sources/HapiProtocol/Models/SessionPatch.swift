@@ -47,6 +47,7 @@ public enum PatchField<Value: Codable & Equatable & Sendable>: Equatable, Sendab
 /// half-decode as a lenient patch.
 public struct SessionPatch: Equatable, Sendable {
     public var active: Bool?
+    public var lastMessagePreview: String?
     public var thinking: Bool?
     /// Carried on the wire but NOT applied by `applySessionDetailPatch`
     /// (mirroring `web/src/lib/sessionPatch.ts`).
@@ -71,6 +72,7 @@ public struct SessionPatch: Equatable, Sendable {
 
     public init(
         active: Bool? = nil,
+        lastMessagePreview: String? = nil,
         thinking: Bool? = nil,
         activeTurnStartedAt: PatchField<Int>? = nil,
         activeAt: Int? = nil,
@@ -90,6 +92,7 @@ public struct SessionPatch: Equatable, Sendable {
         scratchlistUpdatedAt: Int? = nil
     ) {
         self.active = active
+        self.lastMessagePreview = lastMessagePreview
         self.thinking = thinking
         self.activeTurnStartedAt = activeTurnStartedAt
         self.activeAt = activeAt
@@ -113,6 +116,7 @@ public struct SessionPatch: Equatable, Sendable {
 extension SessionPatch: Codable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case active
+        case lastMessagePreview
         case thinking
         case activeTurnStartedAt
         case activeAt
@@ -141,6 +145,7 @@ extension SessionPatch: Codable {
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        lastMessagePreview = try container.decodeIfPresent(String.self, forKey: .lastMessagePreview)
         thinking = try container.decodeIfPresent(Bool.self, forKey: .thinking)
         activeTurnStartedAt = try Self.decodePatchField(Int.self, in: container, forKey: .activeTurnStartedAt)
         activeAt = try container.decodeIfPresent(Int.self, forKey: .activeAt)
@@ -163,6 +168,7 @@ extension SessionPatch: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(active, forKey: .active)
+        try container.encodeIfPresent(lastMessagePreview, forKey: .lastMessagePreview)
         try container.encodeIfPresent(thinking, forKey: .thinking)
         try Self.encodePatchField(activeTurnStartedAt, in: &container, forKey: .activeTurnStartedAt)
         try container.encodeIfPresent(activeAt, forKey: .activeAt)

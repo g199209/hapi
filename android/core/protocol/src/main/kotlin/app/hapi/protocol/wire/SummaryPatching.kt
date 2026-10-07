@@ -165,6 +165,7 @@ object SummaryPatching {
         id = session.id,
         active = session.active,
         thinking = session.thinking,
+        lastMessagePreview = session.lastMessagePreview,
         activeAt = session.activeAt,
         updatedAt = session.updatedAt,
         pinned = session.pinned ?: false,
@@ -212,6 +213,7 @@ object SummaryPatching {
         var next = current.copy(
             active = patch.active ?: current.active,
             thinking = patch.thinking ?: current.thinking,
+            lastMessagePreview = patch.lastMessagePreview ?: current.lastMessagePreview,
             activeAt = patch.activeAt ?: current.activeAt,
             updatedAt = patch.updatedAt?.let { max(current.updatedAt, it) } ?: current.updatedAt,
             backgroundTaskCount = patch.backgroundTaskCount ?: current.backgroundTaskCount,
@@ -307,6 +309,7 @@ object SummaryPatching {
     fun isRenderIrrelevantPatch(current: SessionSummary, next: SessionSummary): Boolean {
         return current.active == next.active
             && current.thinking == next.thinking
+            && current.lastMessagePreview == next.lastMessagePreview
             && current.updatedAt == next.updatedAt
             && current.backgroundTaskCount == next.backgroundTaskCount
             && current.model == next.model

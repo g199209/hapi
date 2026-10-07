@@ -6,6 +6,19 @@ import { SessionRowSummary } from './SessionRowSummary'
 
 afterEach(() => cleanup())
 
+it('updates and clears the live preview while preserving the original title', () => {
+    const session = makeSummary({ lastMessagePreview: 'Latest question',
+        metadata: { path: '/repo', name: 'Fixed title', summary: { text: 'Stale imported text' } } })
+    const view = render(<I18nProvider><SessionRowSummary session={session} /></I18nProvider>)
+    expect(screen.getByTestId('session-message-preview')).toHaveTextContent('Latest question')
+    expect(screen.queryByText('Stale imported text')).not.toBeInTheDocument()
+    view.rerender(<I18nProvider><SessionRowSummary session={{ ...session, lastMessagePreview: 'Latest answer' }} /></I18nProvider>)
+    expect(screen.getByTestId('session-message-preview')).toHaveTextContent('Latest answer')
+    expect(screen.getByText('Fixed title')).toBeInTheDocument()
+    view.rerender(<I18nProvider><SessionRowSummary session={{ ...session, lastMessagePreview: '' }} /></I18nProvider>)
+    expect(screen.queryByTestId('session-message-preview')).not.toBeInTheDocument()
+})
+
 function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     return {
         id: 'background-demo',

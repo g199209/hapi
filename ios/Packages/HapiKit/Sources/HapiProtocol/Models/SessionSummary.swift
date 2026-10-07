@@ -95,6 +95,7 @@ public struct SessionSummary: Codable, Equatable, Sendable {
 
     public var id: String
     public var active: Bool
+    public var lastMessagePreview: String?
     public var thinking: Bool
     public var activeAt: Int
     public var updatedAt: Int
@@ -121,6 +122,7 @@ public struct SessionSummary: Codable, Equatable, Sendable {
     public init(
         id: String,
         active: Bool,
+        lastMessagePreview: String? = nil,
         thinking: Bool,
         activeAt: Int,
         updatedAt: Int,
@@ -143,6 +145,7 @@ public struct SessionSummary: Codable, Equatable, Sendable {
     ) {
         self.id = id
         self.active = active
+        self.lastMessagePreview = lastMessagePreview
         self.thinking = thinking
         self.activeAt = activeAt
         self.updatedAt = updatedAt

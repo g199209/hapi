@@ -46,6 +46,12 @@ function baseSession(overrides: Partial<Session> = {}): Session {
 
 export const sseFixtureCases: SseFixtureCase[] = [
     {
+        name: 'message-preview-update-and-clear',
+        description: 'Conversation previews update independently of the title and clear with an empty string.',
+        initialSession: baseSession({ lastMessagePreview: 'Earlier message' }),
+        patches: [{ lastMessagePreview: 'Newest response' }, { lastMessagePreview: '' }],
+    },
+    {
         name: 'metadata-newer-version-applied',
         description: 'A metadata wrapper with version strictly greater than the cached metadataVersion replaces the value and stores the version; the accompanying newer updatedAt advances.',
         initialSession: baseSession(),

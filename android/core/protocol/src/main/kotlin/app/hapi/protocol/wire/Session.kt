@@ -41,6 +41,7 @@ data class Session(
     val metadataVersion: Long,
     val agentState: AgentState? = null,
     val agentStateVersion: Long,
+    val lastMessagePreview: String? = null,
     val thinking: Boolean,
     val thinkingAt: Long,
     val activeTurnStartedAt: Long? = null,

@@ -28,7 +28,7 @@ data class SessionRowUi(
     val summary: SessionSummary,
     /** `getSessionTitle` port: name → summary text → path tail → id prefix. */
     val title: String,
-    /** Secondary line: summary text, only when it is not already the title. */
+    /** Secondary line: latest conversation text, independent of the session title. */
     val subtitle: String?,
     /**
      * Single meta line, `project · worktree · machine`: project is the last
@@ -362,11 +362,11 @@ class SessionListViewModel(
 
         val rows = visible.map { summary ->
             val title = sessionTitle(summary)
-            val summaryText = summary.metadata?.summary?.text?.takeIf { it.isNotBlank() }
+            val preview = summary.lastMessagePreview?.takeIf { it.isNotBlank() }
             SessionRowUi(
                 summary = summary,
                 title = title,
-                subtitle = summaryText?.takeIf { it != title },
+                subtitle = preview,
                 meta = buildList {
                     projectLabel(summary)?.let(::add)
                     summary.metadata?.worktree?.let { add(it.name.ifBlank { it.branch }) }

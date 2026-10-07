@@ -1,0 +1,71 @@
+{
+    "description": "Conversation previews update independently of the title and clear with an empty string.",
+    "expectedPatchResults": [
+        "applied",
+        "applied"
+    ],
+    "expectedSession": {
+        "active": true,
+        "activeAt": 1755000000000,
+        "activeTurnStartedAt": null,
+        "agentState": null,
+        "agentStateVersion": 5,
+        "createdAt": 1754996400000,
+        "effort": null,
+        "id": "sess-sse-fixture",
+        "lastMessagePreview": "",
+        "metadata": {
+            "flavor": "claude",
+            "host": "devbox",
+            "name": "project",
+            "path": "/home/dev/project"
+        },
+        "metadataVersion": 3,
+        "model": "claude-sonnet-4-6",
+        "modelReasoningEffort": null,
+        "namespace": "default",
+        "permissionMode": "default",
+        "seq": 12,
+        "serviceTier": null,
+        "thinking": false,
+        "thinkingAt": 0,
+        "updatedAt": 1755000000000
+    },
+    "fixtureVersion": 1,
+    "initialSession": {
+        "active": true,
+        "activeAt": 1755000000000,
+        "activeTurnStartedAt": null,
+        "agentState": null,
+        "agentStateVersion": 5,
+        "createdAt": 1754996400000,
+        "effort": null,
+        "id": "sess-sse-fixture",
+        "lastMessagePreview": "Earlier message",
+        "metadata": {
+            "flavor": "claude",
+            "host": "devbox",
+            "name": "project",
+            "path": "/home/dev/project"
+        },
+        "metadataVersion": 3,
+        "model": "claude-sonnet-4-6",
+        "modelReasoningEffort": null,
+        "namespace": "default",
+        "permissionMode": "default",
+        "seq": 12,
+        "serviceTier": null,
+        "thinking": false,
+        "thinkingAt": 0,
+        "updatedAt": 1755000000000
+    },
+    "name": "message-preview-update-and-clear",
+    "patches": [
+        {
+            "lastMessagePreview": "Newest response"
+        },
+        {
+            "lastMessagePreview": ""
+        }
+    ]
+}

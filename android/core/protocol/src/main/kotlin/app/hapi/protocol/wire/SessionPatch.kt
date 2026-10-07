@@ -40,6 +40,7 @@ data class VersionedValue<T>(
  */
 data class SessionPatch(
     val active: Boolean? = null,
+    val lastMessagePreview: String? = null,
     val thinking: Boolean? = null,
     val activeTurnStartedAt: OptionalField<Long?> = OptionalField.Absent,
     val activeAt: Long? = null,
@@ -62,7 +63,7 @@ data class SessionPatch(
 
 object SessionPatches {
     private val KNOWN_KEYS = setOf(
-        "active", "thinking", "activeTurnStartedAt", "activeAt", "updatedAt",
+        "lastMessagePreview", "active", "thinking", "activeTurnStartedAt", "activeAt", "updatedAt",
         "metadata", "agentState", "todos", "teamState",
         "model", "modelReasoningEffort", "effort", "serviceTier",
         "permissionMode", "collaborationMode", "copilotAgentMode",
@@ -90,6 +91,7 @@ object SessionPatches {
         if (obj.isEmpty() || obj.keys.any { it !in KNOWN_KEYS }) return null
         return try {
             SessionPatch(
+                lastMessagePreview = obj["lastMessagePreview"]?.let { it.stringOrNull ?: return null },
                 active = obj["active"]?.let { it.boolOrNull ?: return null },
                 thinking = obj["thinking"]?.let { it.boolOrNull ?: return null },
                 activeTurnStartedAt = optionalNullableLong(obj, "activeTurnStartedAt") ?: return null,

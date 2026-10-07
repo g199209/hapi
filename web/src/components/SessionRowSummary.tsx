@@ -288,6 +288,11 @@ export function SessionRowSummary(props: {
                     ) : null}
                 </div>
             </div>
+            {s.lastMessagePreview ? (
+                <div className="truncate text-xs text-[var(--app-hint)]" data-testid="session-message-preview" title={s.lastMessagePreview}>
+                    {s.lastMessagePreview}
+                </div>
+            ) : null}
             {projectLabel || machineLabel ? (
                 <div className="truncate text-xs text-[var(--app-hint)]" title={[projectLabel, machineLabel].filter(Boolean).join(' · ')}>
                     {[projectLabel, machineLabel].filter(Boolean).join(' · ')}

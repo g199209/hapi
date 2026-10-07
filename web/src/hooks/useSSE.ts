@@ -156,6 +156,7 @@ export function sameSessionSummaryMetadata(
 
 export function isRenderIrrelevantPatch(current: SessionSummary, next: SessionSummary): boolean {
     return current.active === next.active
+        && current.lastMessagePreview === next.lastMessagePreview
         && current.thinking === next.thinking
         && current.updatedAt === next.updatedAt
         && current.backgroundTaskCount === next.backgroundTaskCount
@@ -521,6 +522,7 @@ export function useSSE(options: {
 
                 const nextSummary: SessionSummary = {
                     ...current,
+                    lastMessagePreview: patch.lastMessagePreview ?? current.lastMessagePreview,
                     active: patch.active ?? current.active,
                     thinking: patch.thinking ?? current.thinking,
                     activeAt: patch.activeAt ?? current.activeAt,

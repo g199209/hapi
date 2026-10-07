@@ -46,6 +46,7 @@ export type SessionSummaryMetadata = {
 }
 
 export type SessionSummary = {
+    lastMessagePreview?: string
     hasConversationContent?: boolean
     id: string
     active: boolean
@@ -205,6 +206,7 @@ export function toSessionSummaryMetadata(metadata: Metadata | null | undefined):
 
 export function toSessionSummary(session: Session): SessionSummary {
     return {
+        lastMessagePreview: session.lastMessagePreview,
         hasConversationContent: session.hasConversationContent ?? false,
         id: session.id,
         active: session.active,

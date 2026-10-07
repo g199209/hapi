@@ -37,6 +37,7 @@ public func isNewerVersionedPatch(patchVersion: Int, cachedVersion: Int) -> Bool
 public func isRenderIrrelevantSessionPatch(session: Session, patch: SessionPatch) -> Bool {
     if let value = patch.active, value != session.active { return false }
     if let value = patch.thinking, value != session.thinking { return false }
+    if let value = patch.lastMessagePreview, value != session.lastMessagePreview { return false }
     if let field = patch.activeTurnStartedAt, field.wireValue != session.activeTurnStartedAt { return false }
     if let value = patch.activeAt {
         if abs(value - session.activeAt) < 60_000 {
@@ -88,6 +89,7 @@ public func applySessionDetailPatch(session: Session, patch: SessionPatch) -> Se
 
     if let value = patch.active { assign(\.active, value) }
     if let value = patch.thinking { assign(\.thinking, value) }
+    if let value = patch.lastMessagePreview { assign(\.lastMessagePreview, value) }
     if let value = patch.activeAt { assign(\.activeAt, value) }
     // Monotonic with the hub's applySessionPatch: a rejected stale
     // metadata/agentState replay must not rewind updatedAt.

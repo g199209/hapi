@@ -17,6 +17,7 @@ import type { SteerQueuedMessageResponse } from '@hapi/protocol/schemas'
 import type { ImplementCodexPlanResult } from '@hapi/protocol/apiTypes'
 import type { AgentFlavor, CodexCollaborationMode, CopilotAgentMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import { hasConversationMessageContent, unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
+import { extractMessagePreview } from './messagePreview'
 import type { Server } from 'socket.io'
 import { randomUUID } from 'node:crypto'
 import type { Store, CancelQueuedMessageResult } from '../store'
@@ -219,12 +220,16 @@ export class SyncEngine {
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.eventPublisher.subscribe((event) => {
             if (event.type === 'message-received') {
+                if (extractMessagePreview(event.message.content)) this.sessionCache.refreshMessagePreview(event.sessionId)
                 if (!this.sessionCache.getSession(event.sessionId)?.hasConversationContent
                     && hasConversationMessageContent(event.message.content)) {
                     this.sessionCache.refreshConversationContent(event.sessionId)
                 }
             } else if (event.type === 'message-cancelled' || event.type === 'messages-invalidated') {
                 this.sessionCache.refreshConversationContent(event.sessionId)
+                this.sessionCache.refreshMessagePreview(event.sessionId)
+            } else if (event.type === 'messages-consumed') {
+                this.sessionCache.refreshMessagePreview(event.sessionId)
             }
         })
         this.machineCache = new MachineCache(store, this.eventPublisher)

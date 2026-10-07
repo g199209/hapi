@@ -211,7 +211,7 @@ class SessionListViewModelTest {
         val (viewModel, sessions, machines) = buildViewModel()
         machines.backing.value = listOf(machine("m1", host = "devbox.local", displayName = "Devbox"))
         sessions.set(
-            summary("s1", updatedAt = 900, name = "Named session", machineId = "m1", summaryText = "working on it"),
+            summary("s1", updatedAt = 900, name = "Named session", machineId = "m1", summaryText = "working on it").copy(lastMessagePreview = "Newest message"),
             summary("s2", updatedAt = 500, summaryText = "summary title", machineId = "offline-machine-id"),
             summary("s3", updatedAt = 100, path = "/repo/tail-name"),
         )
@@ -221,7 +221,7 @@ class SessionListViewModelTest {
 
         // Title cascade: name → summary text → path tail.
         assertEquals("Named session", byId.getValue("s1").title)
-        assertEquals("working on it", byId.getValue("s1").subtitle)
+        assertEquals("Newest message", byId.getValue("s1").subtitle)
         assertEquals("summary title", byId.getValue("s2").title)
         // Summary text already used as the title → no subtitle (the path no
         // longer backfills it; the meta line carries the project instead).
@@ -312,9 +312,9 @@ class SessionListViewModelTest {
         // Single-segment paths render as-is.
         assertEquals("srv", byId.getValue("s3").meta)
 
-        // Subtitle is the summary only — never the path.
+        // Without a message preview, neither the old summary nor the path is a subtitle.
         assertNull(byId.getValue("s1").subtitle)
-        assertEquals("Ship it", byId.getValue("s3").subtitle)
+        assertNull(byId.getValue("s3").subtitle)
     }
 
     @Test

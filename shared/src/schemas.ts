@@ -334,6 +334,7 @@ export const DecryptedMessageSchema = z.object({
 export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
 
 export const SessionSchema = z.object({
+    lastMessagePreview: z.string().optional(),
     hasConversationContent: z.boolean().optional(),
     id: z.string(),
     namespace: z.string(),
@@ -402,6 +403,7 @@ const VersionedTeamStatePatchSchema = z.object({
 })
 
 export const SessionPatchSchema = z.object({
+    lastMessagePreview: z.string().optional(),
     active: z.boolean().optional(),
     thinking: z.boolean().optional(),
     activeTurnStartedAt: z.number().nullable().optional(),
