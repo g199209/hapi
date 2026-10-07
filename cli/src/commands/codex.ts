@@ -44,6 +44,7 @@ export const codexCommand: CommandDefinition = {
                 resumeAll?: boolean
                 existingSessionId?: string
                 reservedSessionId?: string
+                appServerEndpoint?: string
                 model?: string
                 modelReasoningEffort?: ReasoningEffort
                 serviceTier?: string
@@ -123,6 +124,10 @@ export const codexCommand: CommandDefinition = {
                         throw new Error('Missing --collaboration-mode value')
                     }
                     options.collaborationMode = parseCollaborationMode(mode)
+                } else if (arg === '--app-server') {
+                    const endpoint = commandArgs[++i]
+                    if (!endpoint) throw new Error('Missing --app-server value')
+                    options.appServerEndpoint = endpoint
                 } else {
                     unknownArgs.push(arg)
                 }

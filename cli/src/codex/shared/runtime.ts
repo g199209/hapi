@@ -12,7 +12,7 @@ import { logger } from '@/ui/logger';
 import { CodexAppServerClient, isIndeterminateError } from '../codexAppServerClient';
 import { codexHome, saveRuntime, runtimeDirectory, runtimeAuthHash, findColdBinding, withThreadOwnership, type CodexRuntimeRecord } from './registry';
 import { startCodexGateway, record, string, type Envelope } from './gateway';
-import { resolveSharedCodex, sharedLaunchConfig, initializeSharedClient, checkSharedCapabilities, takeReservedSessionId, type SharedLaunchOptions } from './launch';
+import { resolveSharedCodex, sharedLaunchConfig, initializeSharedClient, checkSharedCapabilities, takeReservedSessionId, externalAppServerEndpoint, type SharedLaunchOptions } from './launch';
 import { SharedCodexRoot } from './root';
 
 export type RuntimeReady = { sessionId: string; runtime: CodexRuntimeRecord };
@@ -38,11 +38,17 @@ async function freePort(): Promise<number> {
     await new Promise<void>(resolve => server.close(() => resolve())); return address.port;
 }
 
-/** One ordinary CLI execution owns one private engine, with concurrent frontends. */
+/** A wrapper owns a private engine, or only its connections to an external engine. */
 export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (ready: RuntimeReady) => void, abortSignal?: AbortSignal): Promise<void> {
     abortSignal?.throwIfAborted();
     const command = resolveSharedCodex();
     const launch = sharedLaunchConfig(options, options.workingDirectory ?? process.cwd());
+    const external = externalAppServerEndpoint(options);
+    if (external) {
+        // New threads may use explicit launch settings, but never install a
+        // wrapper-lifetime MCP server into a desktop-owned execution.
+        delete launch.threadParams.developerInstructions;
+    }
     const id = randomUUID();
     await mkdir(codexHome(), { recursive: true, mode: 0o700 });
     const home = await realpath(codexHome());
@@ -50,8 +56,8 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
     // Unix sockaddr_un has a small path limit; don't nest sockets under CODEX_HOME.
     const sockets = await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'hapi-cx-')); await chmod(sockets, 0o700);
     const token = randomBytes(32).toString('hex');
-    const upstream = process.platform === 'win32' ? `ws://127.0.0.1:${await freePort()}` : `unix://${join(sockets, 'engine.sock')}`;
-    const upstreamToken = process.platform === 'win32' ? randomBytes(32).toString('hex') : undefined;
+    const upstream = external ?? (process.platform === 'win32' ? `ws://127.0.0.1:${await freePort()}` : `unix://${join(sockets, 'engine.sock')}`);
+    const upstreamToken = !external && process.platform === 'win32' ? randomBytes(32).toString('hex') : undefined;
     const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: home };
     // Every thread injects its own identity. A launch from another agent must not inherit that root's identity.
     delete env.HAPI_SESSION_ID;
@@ -75,7 +81,8 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
     const prepared = new Set<SharedCodexRoot>();
     const reservations = new Map<string, Reservation>();
     const runtime: CodexRuntimeRecord = { id, pid: process.pid, marker: getProcessStartMarker(process.pid) ?? '',
-        endpoint: '', command: command.command, args: command.args, codexHome: home, hub: configuration.apiUrl, authHash: runtimeAuthHash(), sessions: {} };
+        endpoint: '', command: command.command, args: command.args, codexHome: home, hub: configuration.apiUrl, authHash: runtimeAuthHash(), sessions: {},
+        ...(external ? { external: true } : {}) };
     if (!runtime.marker) throw new Error('Cannot verify the runtime process generation');
     let writes = Promise.resolve();
     const persist = () => { writes = writes.catch(() => {}).then(() => saveRuntime(runtime)); return writes; };
@@ -98,11 +105,12 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
     let reconnectingControl = false;
     const reconnectControl = () => {
         if (stopping || reconnectingControl) return;
+        if (external) nativeSettings.clear();
         reconnectingControl = true;
         void (async () => {
             while (!stopping) {
                 try {
-                    await initializeSharedClient(control);
+                    await initializeSharedClient(control, external ? home : undefined);
                     // Roots remain loaded by their independent side-clients.
                     for (const threadId of roots.keys()) await control.request('thread/resume', { threadId });
                     return;
@@ -183,6 +191,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
                 agentState: { controlledByUser: false },
             });
         const root = new SharedCodexRoot(bootstrap, { directory: join(runtimeDirectory(), 'queues'), generation: id, endpoint: upstream, token: upstreamToken,
+            externalHome: external ? home : undefined,
             settingsFor: threadId => nativeSettings.get(threadId), create, end });
         prepared.add(root);
         try { assertRunning(); await root.prepare(); assertRunning(); return root; }
@@ -197,7 +206,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
         runtime.pendingCreations = runtime.pendingCreations?.filter(sid => sid !== root.session.sessionId); await persist();
     };
     const reserve = async (root: SharedCodexRoot, threadId: string) => withThreadOwnership(home, threadId, id, () => reserveRecord(root, threadId));
-    const bind = async (root: SharedCodexRoot, response: Record<string, unknown>, subscribe: boolean, initialOptions?: SharedLaunchOptions) => {
+    const bind = async (root: SharedCodexRoot, response: Record<string, unknown>, subscribe: boolean, initialOptions?: SharedLaunchOptions, created = false) => {
         assertRunning();
         const threadId = string(record(response.thread).id);
         if (!threadId) throw new Error('Codex lifecycle response has no thread ID');
@@ -205,7 +214,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
         if (reserved && reserved.threadId !== threadId) throw new Error('Codex retargeted a reserved thread');
         if (!reserved) await reserve(root, threadId);
         // No fake user turn/name. Metadata write materializes an empty legacy rollout for native resume.
-        await control.request('thread/metadata/update', { threadId, gitInfo: gitInfo(string(record(response.thread).cwd) ?? root.bootstrap.workingDirectory) });
+        if (!external || created) await control.request('thread/metadata/update', { threadId, gitInfo: gitInfo(string(record(response.thread).cwd) ?? root.bootstrap.workingDirectory) });
         assertRunning();
         roots.set(threadId, root);
         await root.bind(threadId, response, subscribe);
@@ -225,7 +234,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
             runtime.pendingCreations = [...runtime.pendingCreations ?? [], root.session.sessionId]; await persist();
             const response = record(await root.client.request(method, root.config({ ...params, ...(method === 'thread/fork' ? { deferGoalContinuation: true } : {}) })));
             nativeSucceeded = true;
-            await bind(root, response, true, initialOptions); return root;
+            await bind(root, response, true, initialOptions, true); return root;
         } catch (error) {
             // A timed-out native mutation may have succeeded. Never replay it or kill unrelated roots.
             if (!nativeSucceeded && !isIndeterminateError(error)) {
@@ -261,7 +270,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
             }
             if (candidate !== threadId && !existing) throw new Error('Resume the parent HAPI session before attaching a child agent');
         }
-        if (request.method === 'thread/resume' && existing) return { ...request, params: existing.config(params) };
+        if (request.method === 'thread/resume' && existing) return { ...request, params: external ? { threadId } : existing.config(params) };
         if (threadId) await withThreadOwnership(home, threadId, id, async () => {});
         const cwd = string(params.cwd) ?? existing?.bootstrap.workingDirectory ?? launch.cwd;
         const root = request.method === 'thread/resume' && threadId
@@ -274,7 +283,8 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
                 runtime.pendingCreations = [...runtime.pendingCreations ?? [], root.session.sessionId]; await persist();
             }
             reservations.set(key(connection, request), { root, resumeId: request.method === 'thread/resume' ? threadId : undefined });
-            return { ...request, params: root.config({ ...params, ...(request.method === 'thread/fork' ? { deferGoalContinuation: true } : {}) }) };
+            return { ...request, params: external && request.method === 'thread/resume' ? { threadId }
+                : root.config({ ...params, ...(request.method === 'thread/fork' ? { deferGoalContinuation: true } : {}) }) };
         } catch (error) { prepared.delete(root); await root.close(true); throw error; }
     });
     const after = (request: Envelope, response: Envelope, connection: string): Promise<void | Envelope[]> => operation(async () => {
@@ -285,7 +295,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
                 runtime.pendingCreations = runtime.pendingCreations?.filter(sid => sid !== reservation.root.session.sessionId);
                 await persist(); prepared.delete(reservation.root); await reservation.root.close(true); return;
             }
-            await bind(reservation.root, record(response.result), true);
+            await bind(reservation.root, record(response.result), true, undefined, !reservation.resumeId);
         } else if (request.method === 'thread/archive' && !response.error) {
             const root = roots.get(string(record(request.params).threadId) ?? ''); if (root) await end(root, false);
         } else if (request.method === 'thread/queue/delete' && !response.error && record(response.result).deleted === true) {
@@ -308,20 +318,26 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
     startup = (async () => {
         if (abortSignal?.aborted) throw new Error('Codex startup canceled');
         assertRunning();
-        server = spawn(command.command, [...command.args, 'app-server', ...launch.serverArgs, '--listen', upstream,
-            ...(upstreamToken ? ['--ws-auth', 'capability-token', '--ws-token-sha256', createHash('sha256').update(upstreamToken).digest('hex')] : [])],
-            { cwd: launch.cwd, env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
-        server.stderr?.on('data', data => logger.debug('[Codex shared] app-server', data.toString()));
-        server.once('error', error => { void shutdown(error); });
-        server.once('exit', (code, sig) => { void shutdown(new Error(`app-server exited (${code}, ${sig})`)); });
-        runtime.serverPid = server.pid;
-        runtime.serverMarker = server.pid ? getProcessStartMarker(server.pid) ?? undefined : undefined;
-        if (!runtime.serverPid || !runtime.serverMarker) throw new Error('Cannot verify app-server generation');
+        if (!external) {
+            server = spawn(command.command, [...command.args, 'app-server', ...launch.serverArgs, '--listen', upstream,
+                ...(upstreamToken ? ['--ws-auth', 'capability-token', '--ws-token-sha256', createHash('sha256').update(upstreamToken).digest('hex')] : [])],
+                { cwd: launch.cwd, env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+            server.stderr?.on('data', data => logger.debug('[Codex shared] app-server', data.toString()));
+            server.once('error', error => { void shutdown(error); });
+            server.once('exit', (code, sig) => { void shutdown(new Error(`app-server exited (${code}, ${sig})`)); });
+            runtime.serverPid = server.pid;
+            runtime.serverMarker = server.pid ? getProcessStartMarker(server.pid) ?? undefined : undefined;
+            if (!runtime.serverPid || !runtime.serverMarker) throw new Error('Cannot verify app-server generation');
+        }
         await persist();
-        const deadline = Date.now() + 20_000;
-        for (;;) {
-            try { await initializeSharedClient(control); break; }
-            catch (error) { if (Date.now() > deadline || stopping) throw error; await new Promise(resolve => setTimeout(resolve, 100)); }
+        if (external) {
+            await initializeSharedClient(control, home);
+        } else {
+            const deadline = Date.now() + 20_000;
+            for (;;) {
+                try { await initializeSharedClient(control); break; }
+                catch (error) { if (Date.now() > deadline || stopping) throw error; await new Promise(resolve => setTimeout(resolve, 100)); }
+            }
         }
         assertRunning();
         control.setTransportAbandonedHandler(reconnectControl);
@@ -336,6 +352,12 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
                 }
             }, control: (method, params) => operation(async () => {
                 const sid = string(record(params).sessionId); const root = [...roots.values()].find(root => root.session.sessionId === sid);
+                // Hub KillSession and Runner StopSession may arrive together.
+                // Native archive has already succeeded when this binding is
+                // inactive; acknowledge it during the delayed wrapper cleanup.
+                if (!root && method === 'hapi/stopSession' && sid && runtime.sessions[sid]?.active === false) {
+                    return { stopped: true };
+                }
                 if (!root) throw new Error('Shared session not found');
                 if (method === 'hapi/stopSession') { await end(root); return { stopped: true }; }
                 if (method === 'hapi/attach') return { threadId: root.threadId };
@@ -353,6 +375,9 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
         if (options.resumeSessionId) {
             const threadId = options.resumeSessionId;
             const thread = record(record(await control.request('thread/read', { threadId, includeTurns: false })).thread);
+            if (external && (!string(thread.cwd) || await realpath(String(thread.cwd)) !== await realpath(launch.cwd))) {
+                throw new Error('External Codex thread working directory differs from the selected directory; select its original directory');
+            }
             if (string(thread.parentThreadId)) {
                 throw new Error('Cannot cold-resume a child agent independently. Resume its parent HAPI session instead.');
             }
@@ -363,7 +388,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
                 const root = await prepare(launch.cwd, existing);
                 await reserveRecord(root, threadId); return root;
             });
-            const params = root.config({ ...launch.threadParams, threadId });
+            const params = external ? { threadId } : root.config({ ...launch.threadParams, threadId });
             let response: Record<string, unknown>;
             try {
                 response = record(await root.client.request('thread/resume', params));
@@ -376,7 +401,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
                 await root.client.request('thread/unarchive', { threadId });
                 response = record(await root.client.request('thread/resume', params));
             }
-            await bind(root, response, false, options);
+            await bind(root, response, false, external ? {} : options);
         } else root = await create('thread/start', { ...launch.threadParams, cwd: launch.cwd }, undefined, options);
         assertRunning();
         onReady?.({ sessionId: root.session.sessionId, runtime });

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { z } from 'zod';
 import { resolveCodexCommand, type CodexCommand } from '../utils/codexExecutable';
 import { parseCodexCliOverrides, stripCodexCliOverrides } from '../utils/codexCliOverrides';
@@ -17,7 +18,8 @@ export const SharedLaunchSchema = z.object({
     reservedSessionId: z.string().optional(),
     model: z.string().optional(), modelReasoningEffort: z.string().optional(),
     serviceTier: z.string().optional(), collaborationMode: z.enum(['default', 'plan']).optional(),
-    workingDirectory: z.string().optional()
+    workingDirectory: z.string().optional(),
+    appServerEndpoint: z.string().optional()
 });
 export type SharedLaunchOptions = z.infer<typeof SharedLaunchSchema>;
 
@@ -152,9 +154,31 @@ export function sharedLaunchConfig(options: SharedLaunchOptions, cwd: string): {
     };
 }
 
-export async function initializeSharedClient(client: CodexAppServerClient): Promise<void> {
+export async function initializeSharedClient(client: CodexAppServerClient, expectedHome?: string): Promise<void> {
     await client.connect();
-    await client.initialize({ clientInfo: { name: 'hapi', title: 'HAPI', version: '1' }, capabilities: { experimentalApi: true } });
+    const result = await client.initialize({ clientInfo: { name: 'hapi', title: 'HAPI', version: '1' }, capabilities: { experimentalApi: true } });
+    if (expectedHome) {
+        const actualHome = (result as { codexHome?: string }).codexHome;
+        if (!actualHome || realpathSync(actualHome) !== realpathSync(expectedHome)) {
+            await client.disconnect();
+            throw new Error('External Codex app-server uses a different CODEX_HOME; refusing to attach');
+        }
+    }
+}
+
+/** Explicit opt-in. No discovery by PID and no fallback to a second engine. */
+export function externalAppServerEndpoint(options: SharedLaunchOptions): string | undefined {
+    const endpoint = options.appServerEndpoint ?? process.env.HAPI_CODEX_APP_SERVER_ENDPOINT;
+    if (endpoint === undefined) return undefined;
+    if (!endpoint.startsWith('unix:///') || endpoint.length <= 'unix:///'.length) {
+        throw new Error('HAPI_CODEX_APP_SERVER_ENDPOINT / --app-server must be an absolute unix:///path socket URL');
+    }
+    const args = options.codexArgs ?? [];
+    const delimiter = args.indexOf('--');
+    if (args.slice(0, delimiter < 0 ? args.length : delimiter).some(arg => /^(-c|--config(?:=|$)|--enable(?:=|$)|--disable(?:=|$)|--strict-config$)/.test(arg))) {
+        throw new Error('External Codex mode cannot apply daemon launch flags; configure the daemon itself');
+    }
+    return endpoint;
 }
 
 /** Invalid IDs only: no probes may create turns, mutate threads or call a model. */

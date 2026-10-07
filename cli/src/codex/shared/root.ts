@@ -27,6 +27,7 @@ import { planImplementationMessageId, planProposalForItem, planProposalForTurn }
 type RuntimeSettings = NonNullable<Parameters<ApiSessionClient['keepAlive']>[2]>;
 export type RootHost = {
     directory: string; generation: string; endpoint: string; token?: string;
+    externalHome?: string;
     settingsFor(threadId: string): Record<string, unknown> | undefined;
     create(method: 'thread/start' | 'thread/fork', params: Record<string, unknown>, parent?: SharedCodexRoot): Promise<SharedCodexRoot>;
     end(root: SharedCodexRoot, nativeArchive?: boolean): Promise<void>;
@@ -145,9 +146,11 @@ export class SharedCodexRoot {
     async prepare(): Promise<void> {
         // Descendants share this bridge. The projection applies successful
         // root title calls so a child cannot rename the parent session.
-        this.bridge = await buildHapiMcpBridge(this.session, { exportSessionEnv: false, emitTitleSummary: false,
-            skillLookup: { workingDirectory: this.bootstrap.workingDirectory, flavor: 'codex' } });
-        await initializeSharedClient(this.client);
+        if (!this.host.externalHome) {
+            this.bridge = await buildHapiMcpBridge(this.session, { exportSessionEnv: false, emitTitleSummary: false,
+                skillLookup: { workingDirectory: this.bootstrap.workingDirectory, flavor: 'codex' } });
+        }
+        await initializeSharedClient(this.client, this.host.externalHome);
         this.permissions = new SharedCodexPermissions(this.session, this.client, this.host.generation);
         this.client.setServerRequestHandler(request => { void this.receiveRequest(request); });
     }
@@ -176,6 +179,7 @@ export class SharedCodexRoot {
         return false;
     }
     config(params: Record<string, unknown>): Record<string, unknown> {
+        if (this.host.externalHome) return params;
         return { ...params, cwd: params.cwd ?? this.bootstrap.workingDirectory,
             developerInstructions: params.developerInstructions ?? getCodexSystemPrompt(), config: {
             ...record(params.config), 'mcp_servers.hapi': this.bridge.mcpServers.hapi,
@@ -346,7 +350,7 @@ export class SharedCodexRoot {
         try {
             while (!this.closed && !this.stopping) {
                 try {
-                    await initializeSharedClient(this.client);
+                    await initializeSharedClient(this.client, this.host.externalHome);
                     if (this.stopping) return;
                     this.permissions = new SharedCodexPermissions(this.session, this.client, `${this.host.generation}:${randomUUID()}`);
                     this.client.setServerRequestHandler(request => { void this.receiveRequest(request); });
@@ -563,7 +567,9 @@ export class SharedCodexRoot {
     async suspend(): Promise<void> {
         this.stopAccepting();
         await this.work.catch(() => {}); await Promise.allSettled([...this.controls]);
-        await this.queue?.suspend();
+        // External execution continues after this bridge exits. Its native
+        // input queue must continue too; reconnect reconciles the same IDs.
+        if (!this.host.externalHome) await this.queue?.suspend();
         // Capture any dequeue/turn that won the race with native deletion.
         if (this.threadId && this.client.isInitialized()) await this.refresh();
     }

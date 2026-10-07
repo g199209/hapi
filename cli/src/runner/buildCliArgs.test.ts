@@ -456,6 +456,26 @@ describe('buildCliArgs', () => {
 
 
 describe('createSpawnDeduplicator', () => {
+    it('expires recovered dead children before a new resume without waiting for heartbeat', async () => {
+        let alive = true
+        let tracked = true
+        let calls = 0
+        const dedupe = createSpawnDeduplicator(async () => {
+            calls++
+            return { type: 'success' as const, sessionId: 'same-row' }
+        }, id => {
+            if (tracked && !alive) { tracked = false; dedupe.onChildExited(id) }
+        })
+        dedupe.recoverChild('same-row', { type: 'success', sessionId: 'same-row' })
+        await dedupe({ directory: '/tmp', existingSessionId: 'same-row' })
+        expect(calls).toBe(0)
+        alive = false
+        await Promise.all([
+            dedupe({ directory: '/tmp', existingSessionId: 'same-row' }),
+            dedupe({ directory: '/tmp', existingSessionId: 'same-row' })
+        ])
+        expect(calls).toBe(1)
+    })
     it('rehydrates a live child after runner restart without spawning again', async () => {
         let calls = 0
         const dedupe = createSpawnDeduplicator(async () => {

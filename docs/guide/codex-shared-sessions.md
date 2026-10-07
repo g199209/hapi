@@ -1,5 +1,41 @@
 # Codex shared sessions
 
+## Existing desktop daemon (HomeLab build)
+
+On Linux/WSL, set `HAPI_CODEX_APP_SERVER_ENDPOINT` on the Runner to an existing
+Codex daemon's absolute Unix socket URL. For example:
+
+```bash
+export HAPI_CODEX_APP_SERVER_ENDPOINT="unix://$HOME/.codex/app-server-control/app-server-control.sock"
+hapi runner start
+```
+
+For a supervised Runner, add the environment variable to its service and restart
+that service. A terminal launch can instead pass
+`hapi codex resume <native-thread-id> --app-server unix:///absolute/control.sock`.
+
+The daemon must already be running with the same `CODEX_HOME` and support the
+shared-session protocol. HAPI never starts a replacement engine when this
+connection fails. Existing desktop threads retain their model, permission
+profile, instructions, MCP servers, and pending input. Import-page launch
+settings do not override an existing thread; change settings explicitly after
+connecting if desired. The selected working directory must match the thread.
+
+HAPI does not inject its MCP bridge or session environment variable into these
+externally owned threads. Closing the HAPI wrapper detaches its connections and
+keeps native execution and queued input alive. Closing a browser leaves the
+Runner wrapper running. **End session / Archive** explicitly archives the shared
+native thread on every client, while other desktop threads and the daemon remain
+running. HAPI new sessions use the same daemon when this option is configured.
+
+Only selected/imported threads are mirrored into HAPI. Desktop-created new
+threads can be imported later; they are not all published automatically. This
+build supports local Unix socket endpoints; native Windows TCP endpoints are
+not part of this integration.
+
+The lifecycle descriptions below refer to the default HAPI-owned engine mode;
+external daemon ownership and shutdown follow the rules above.
+
 Codex **0.154.0 or newer**: the official terminal UI and HAPI Web / native
 clients share one app-server. No local/remote ownership switch. Both can send
 messages, approve tools and answer `request_user_input`.

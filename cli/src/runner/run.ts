@@ -60,7 +60,8 @@ export type SpawnDeduplicator = ((options: SpawnSessionOptions) => Promise<Spawn
 }
 
 export function createSpawnDeduplicator(
-  spawnOnce: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
+  spawnOnce: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>,
+  refreshRecoveredChild?: (sessionId: string) => void
 ): SpawnDeduplicator {
   const completedOrInFlight = new Map<string, Promise<SpawnSessionResult>>();
   const childState = new Map<string, 'alive' | 'stopping'>();
@@ -70,6 +71,9 @@ export function createSpawnDeduplicator(
     if (!key) {
       return await spawnOnce(options);
     }
+    // Recovered children aren't OS children of this runner, so no exit event
+    // arrives. Check their generation before returning a cached success.
+    refreshRecoveredChild?.(key);
     const existing = completedOrInFlight.get(key);
     if (existing) {
       return await existing;
@@ -1075,7 +1079,16 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
       }
     };
 
-    spawnSession = createSpawnDeduplicator(spawnSessionOnce);
+    spawnSession = createSpawnDeduplicator(spawnSessionOnce, sessionId => {
+      for (const [pid, id] of [...existingSessionIdByChildPid]) {
+        if (id !== sessionId) continue;
+        const alive = isProcessAlive(pid);
+        const persisted = persistedResumeProcesses.get(pid);
+        if (!alive || persisted && classifyRecoveredProcessGeneration(alive, getProcessStartMarker(pid), persisted.processStartMarker) === 'exited') {
+          onChildExited(pid);
+        }
+      }
+    });
     for (const [pid, record] of persistedResumeProcesses) {
       const verified = pidToRequestedSessionId.get(pid) === record.requestedSessionId;
       existingSessionIdByChildPid.set(pid, record.requestedSessionId);

@@ -1,9 +1,24 @@
-import { describe, expect, it } from 'vitest';
-import { sharedLaunchConfig, takeReservedSessionId } from './launch';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sharedLaunchConfig, takeReservedSessionId, externalAppServerEndpoint } from './launch';
 import { parseCodexCliOverrides } from '../utils/codexCliOverrides';
 import { resolveCodexPermissionModeConfig } from '../utils/permissionModeConfig';
 
 describe('shared launch configuration', () => {
+    afterEach(() => vi.unstubAllEnvs());
+    it('requires explicit external endpoint opt-in and validates Unix socket URLs', () => {
+        vi.stubEnv('HAPI_CODEX_APP_SERVER_ENDPOINT', undefined);
+        expect(externalAppServerEndpoint({})).toBeUndefined();
+        vi.stubEnv('HAPI_CODEX_APP_SERVER_ENDPOINT', 'unix:///tmp/desktop.sock');
+        expect(externalAppServerEndpoint({})).toBe('unix:///tmp/desktop.sock');
+        expect(externalAppServerEndpoint({ appServerEndpoint: 'unix:///tmp/explicit.sock' })).toBe('unix:///tmp/explicit.sock');
+        for (const appServerEndpoint of ['', 'unix://', 'unix://relative', 'ws://localhost:1234']) {
+            expect(() => externalAppServerEndpoint({ appServerEndpoint })).toThrow('absolute unix:///path');
+        }
+        for (const codexArgs of [['-c', 'key=true'], ['--enable=feature'], ['--disable', 'feature'], ['--strict-config']]) {
+            expect(() => externalAppServerEndpoint({ codexArgs })).toThrow('daemon launch flags');
+        }
+        expect(externalAppServerEndpoint({ codexArgs: ['--', '--enable=literal-prompt'] })).toBe('unix:///tmp/desktop.sock');
+    });
     it.each(['default', 'read-only', 'yolo'] as const)('keeps explicit %s authoritative over native permission flags', permissionMode => {
         for (const flags of [
             ['--yolo'], ['--dangerously-bypass-approvals-and-sandbox'], ['--full-auto'],
