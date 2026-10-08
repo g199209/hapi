@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,27 +81,29 @@ fun DiffView(
         val visible = if (expanded) rows else rows.take(compactLineLimit)
         val hidden = rows.size - visible.size
 
-        Column(
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .width(IntrinsicSize.Max)
-                .padding(vertical = 4.dp),
-        ) {
-            for (row in visible) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(row.background),
-                ) {
-                    Text(
-                        text = row.text,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        softWrap = false,
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                    )
+        // One selection scope spans all visible code rows. Gutters and hunk
+        // headings are presentation metadata and must not enter copied code.
+        SelectionContainer {
+            Column(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .width(IntrinsicSize.Max)
+                    .padding(vertical = 4.dp),
+            ) {
+                val lastCodeRow = visible.indexOfLast { it.gutter != null }
+                visible.forEachIndexed { index, row ->
+                    Row(Modifier.fillMaxWidth().background(row.background).padding(horizontal = 10.dp)) {
+                        if (row.gutter == null) {
+                            DisableSelection { DiffRowText(row.text) }
+                        } else {
+                            DisableSelection { DiffRowText(row.gutter) }
+                            // Compose concatenates selections from separate Text
+                            // nodes without separators. Keep a logical newline
+                            // between code rows; maxLines=1 preserves row height.
+                            val text = if (index < lastCodeRow) row.text + AnnotatedString("\n") else row.text
+                            DiffRowText(text)
+                        }
+                    }
                 }
             }
         }
@@ -121,6 +125,18 @@ fun DiffView(
             )
         }
     }
+}
+
+@Composable
+private fun DiffRowText(text: AnnotatedString) {
+    Text(
+        text = text,
+        fontFamily = FontFamily.Monospace,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        softWrap = false,
+        maxLines = 1,
+    )
 }
 
 @Composable
@@ -181,7 +197,7 @@ private fun DiffStatBadge(added: Boolean, value: Int, colors: HapiExtendedColors
     )
 }
 
-private class DiffRow(val text: AnnotatedString, val background: Color)
+private class DiffRow(val text: AnnotatedString, val background: Color, val gutter: AnnotatedString? = null)
 
 private fun buildDiffRows(file: DiffFile, colors: HapiExtendedColors): List<DiffRow> {
     val maxOld = file.hunks.maxOf { hunk -> hunk.oldStart + hunk.oldCount }
@@ -206,6 +222,9 @@ private fun buildDiffRows(file: DiffFile, colors: HapiExtendedColors): List<Diff
             }
             rows += DiffRow(
                 text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = textColor)) { append(line.text) }
+                },
+                gutter = buildAnnotatedString {
                     withStyle(gutterStyle) {
                         append((line.oldLineNumber?.toString() ?: "").padStart(oldWidth))
                         append(' ')
@@ -215,7 +234,6 @@ private fun buildDiffRows(file: DiffFile, colors: HapiExtendedColors): List<Diff
                         append("  ")
                         append(marker)
                         append(' ')
-                        append(line.text)
                     }
                 },
                 background = background,
