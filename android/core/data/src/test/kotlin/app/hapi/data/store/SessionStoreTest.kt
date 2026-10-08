@@ -271,17 +271,54 @@ class SessionStoreTest {
     }
 
     @Test
-    fun `archive removes optimistically and restores on failure`() = runStoreTest { store, server ->
+    fun `archive retains the authoritative archived record and failure leaves current rows intact`() = runStoreTest { store, server ->
         server.enqueueJson(sessionsResponseJson(summary("s1", updatedAt = 900), summary("s2", updatedAt = 100)))
         store.refresh()
 
         server.enqueueJson("""{"ok":true}""")
+        val archived = summary("s2", metadataVersion = 2, metadata = app.hapi.protocol.wire.SessionSummaryMetadata(path = "/repo", lifecycleState = "archived"))
+        server.enqueueJson(sessionsResponseJson(summary("s1", updatedAt = 900), archived))
         store.archiveSession("s2")
-        assertEquals(listOf("s1"), store.sessions.value.map { it.id })
+        assertEquals("archived", store.sessions.value.first { it.id == "s2" }.metadata?.lifecycleState)
 
         server.enqueueJson("""{"error":"session_inactive"}""", code = 409)
         assertFailsWith<Exception> { store.archiveSession("s1") }
-        assertEquals(listOf("s1"), store.sessions.value.map { it.id }, "failed archive restores the row")
+        assertEquals(setOf("s1", "s2"), store.sessions.value.map { it.id }.toSet(), "failed archive does not remove a row")
+    }
+
+    @Test
+    fun `older REST and full SSE cannot undo archive but a newer reopen can`() = runStoreTest { store, server ->
+        val archived = summary("s1", metadataVersion = 4,
+            metadata = app.hapi.protocol.wire.SessionSummaryMetadata(path = "/repo", lifecycleState = "archived"))
+        server.enqueueJson(sessionsResponseJson(archived)); store.refresh()
+        server.enqueueJson(sessionsResponseJson(summary("s1", active = true, metadataVersion = 3,
+            metadata = app.hapi.protocol.wire.SessionSummaryMetadata(path = "/repo", lifecycleState = "running"))))
+        store.refresh()
+        assertEquals(archived, store.sessions.value.single())
+        val stale = session("s1", metadataVersion = 3).copy(metadata = app.hapi.protocol.wire.SessionMetadata(path = "/repo", host = "test", lifecycleState = "running"))
+        store.applySessionEvent(globalScope, sessionUpdatedEvent("s1", fullSessionJson(stale)))
+        assertEquals(archived, store.sessions.value.single())
+        store.applySessionEvent(globalScope, sessionUpdatedEvent("s1",
+            """{"metadata":{"version":4,"value":{"path":"/repo","host":"test","lifecycleState":"running"}}}"""))
+        assertEquals(archived, store.sessions.value.single())
+        val reopened = stale.copy(metadataVersion = 5)
+        store.applySessionEvent(globalScope, sessionUpdatedEvent("s1", fullSessionJson(reopened)))
+        assertEquals("running", store.sessions.value.single().metadata?.lifecycleState)
+        assertTrue(store.sessions.value.single().active)
+    }
+
+    @Test
+    fun `archive metadata remains in the persisted snapshot across cold start`() = runTest {
+        val dir = Files.createTempDirectory("hapi-archive-snapshot").toFile()
+        val server = MockWebServer(); server.start()
+        try {
+            val store = SessionStore(apiFor(server), backgroundScope, dir)
+            server.enqueueJson(sessionsResponseJson(summary("saved", metadataVersion = 9,
+                metadata = app.hapi.protocol.wire.SessionSummaryMetadata(path = "/repo", lifecycleState = "archived"))))
+            store.refresh(); store.flushPersistence()
+            val restored = SessionStore(apiFor(server), backgroundScope, dir)
+            assertEquals("archived", restored.sessions.value.single().metadata?.lifecycleState)
+        } finally { server.shutdown(); dir.deleteRecursively() }
     }
 
     // ------------------------------------------- rename / delete / reopen --

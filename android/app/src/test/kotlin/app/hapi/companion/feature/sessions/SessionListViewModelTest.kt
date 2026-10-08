@@ -169,6 +169,155 @@ private fun TestScope.buildViewModel(
 // ------------------------------------------------------------------ tests --
 
 class SessionListViewModelTest {
+    @Test
+    fun `directory grouping preserves pin and pending-request priority ahead of recency`() = runTest {
+        val (vm, store, _) = buildViewModel()
+        store.set(
+            summary("recent", active = true, updatedAt = 1000),
+            summary("waiting", active = true, updatedAt = 10).copy(pendingRequestsCount = 1),
+            summary("inactive", updatedAt = 2000),
+            summary("pinned", updatedAt = 1).copy(pinned = true),
+        )
+        val state = vm.uiState.first { it.rows.size == 4 }
+        assertEquals(listOf("pinned", "waiting", "recent", "inactive"), state.groups.single().rows.map { it.id })
+    }
+
+    @Test
+    fun `search matches across fields and combines with machine and archive filters`() = runTest {
+        val (vm, store, machines) = buildViewModel()
+        machines.backing.value = listOf(machine("m1", "Workstation"), machine("m2", "Laptop"))
+        val a = summary("a", name = "修复 Codex", path = "/home/Project", machineId = "m1")
+            .copy(lastMessagePreview = "Latest answer")
+        val b = summary("b", name = "Codex", path = "/home/Project", machineId = "m2")
+        val old = a.copy(id = "old", metadata = a.metadata?.copy(lifecycleState = "archived"))
+        store.set(a, b, old)
+        vm.setSearchQuery("  CODEX project   workstation answer ")
+        assertEquals(listOf("a"), vm.uiState.first { it.listFilter.query.contains("answer") }.rows.map { it.id })
+        vm.setShowArchived(true)
+        assertEquals(listOf("old"), vm.uiState.first { it.showArchived }.rows.map { it.id })
+        vm.setShowArchived(false); vm.setSearchQuery("codex project")
+        vm.setMachineFilter("m2")
+        assertEquals(listOf("b"), vm.uiState.first { it.activeMachineFilter == "m2" }.rows.map { it.id })
+        vm.setSearchQuery("no match")
+        assertTrue(vm.uiState.first { it.listFilter.query == "no match" }.rows.isEmpty())
+        vm.clearListFilters()
+        assertEquals(listOf("b"), vm.uiState.first { !it.listFilter.active }.rows.map { it.id })
+    }
+
+    @Test
+    fun `date filtering combines with search and follows live last update`() = runTest {
+        val (vm, store, _) = buildViewModel()
+        val day = java.time.LocalDate.of(2026, 10, 7)
+        val midnight = day.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val next = day.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        store.set(summary("before", updatedAt = midnight - 1), summary("inside", updatedAt = midnight), summary("end", updatedAt = next - 1), summary("after", updatedAt = next))
+        vm.setDateRange(SessionDateRange(day, day))
+        assertEquals(setOf("inside", "end"), vm.uiState.first { it.listFilter.dates != null }.rows.map { it.id }.toSet())
+        vm.setSearchQuery("inside")
+        assertEquals(listOf("inside"), vm.uiState.first { it.listFilter.query == "inside" }.rows.map { it.id })
+        store.set(summary("inside", updatedAt = next))
+        vm.uiState.first { it.rows.isEmpty() }
+        vm.setDateRange(null)
+        assertEquals(listOf("inside"), vm.uiState.first { it.listFilter.dates == null }.rows.map { it.id })
+    }
+
+    @Test
+    fun `directories separate machines and merge worktrees without duplicating global pins`() = runTest {
+        val (vm, store, machines) = buildViewModel()
+        machines.backing.value = listOf(machine("m1", "Desktop"), machine("m2", "Laptop"))
+        val a = summary("a", path = "/repo/app", machineId = "m1", updatedAt = 10)
+        val branch = summary("branch", path = "/worktrees/feature", machineId = "m1",
+            worktree = WorktreeMetadata(basePath = "/repo/app", name = "feature", branch = "feature", worktreePath = "/worktrees/feature"))
+        val otherMachine = a.copy(id = "other", metadata = a.metadata?.copy(machineId = "m2"))
+        val pin = a.copy(id = "pin", pinned = true)
+        val global = a.copy(id = "global", globalPinned = true)
+        store.set(a, branch, otherMachine, pin, global)
+        val state = vm.uiState.first { it.rows.size == 5 }
+        assertEquals(2, state.groups.size)
+        val desktop = state.groups.first { it.machine?.id == "m1" }
+        assertEquals("repo/app", desktop.label)
+        assertEquals("pin", desktop.rows.first().id)
+        assertEquals(setOf("a", "branch", "pin"), desktop.rows.map { it.id }.toSet())
+        assertEquals(1, state.rows.count { it.summary.globalPinned == true })
+        assertFalse(state.groups.any { group -> group.rows.any { it.id == "global" } })
+        vm.setSearchQuery("feature")
+        val found = vm.uiState.first { it.listFilter.query == "feature" }
+        assertEquals(listOf("branch"), found.groups.single().rows.map { it.id })
+    }
+
+    @Test
+    fun `groups with identical display names remain distinct and regroup on archive`() = runTest {
+        val (vm, store, _) = buildViewModel()
+        val a = summary("a", path = "/first/repo/app")
+        val b = summary("b", path = "/second/repo/app")
+        store.set(a, b)
+        var state = vm.uiState.first { it.rows.size == 2 }
+        assertEquals(2, state.groups.map { it.key }.distinct().size)
+        assertEquals(1, state.groups.map { it.label }.distinct().size)
+        store.set(a.copy(metadata = a.metadata?.copy(lifecycleState = "archived")), b)
+        state = vm.uiState.first { it.archivedCount == 1 }
+        assertEquals(listOf("b"), state.groups.single().rows.map { it.id })
+        vm.setShowArchived(true)
+        assertEquals(listOf("a"), vm.uiState.first { it.showArchived }.groups.single().rows.map { it.id })
+    }
+
+    @Test
+    fun `main hides archived sessions on initial load and repeated refresh while preserving inactive sessions`() = runTest {
+        val (vm, store, _) = buildViewModel()
+        val archived = summary("archived", name = "Saved").let {
+            it.copy(pinned = true, metadata = it.metadata?.copy(lifecycleState = "archived"))
+        }
+        val inactive = summary("inactive", active = false)
+        store.set(archived, inactive)
+        var state = vm.uiState.first { it.archivedCount == 1 }
+        assertFalse(state.showArchived)
+        assertEquals(listOf("inactive"), state.rows.map { it.id })
+        store.set(archived.copy(updatedAt = 9999), inactive)
+        vm.refresh(); runCurrent()
+        state = vm.uiState.value
+        assertEquals(listOf("inactive"), state.rows.map { it.id })
+        vm.setShowArchived(true)
+        state = vm.uiState.first { it.showArchived }
+        assertEquals(listOf("archived"), state.rows.map { it.id })
+        vm.onSessionOpened("archived")
+        assertFalse(store.calls.value.any { it.startsWith("reopen:") })
+        vm.setShowArchived(false)
+        assertEquals(listOf("inactive"), vm.uiState.first { !it.showArchived }.rows.map { it.id })
+        store.set(archived.copy(active = true, metadataVersion = 2, metadata = archived.metadata?.copy(lifecycleState = "running")), inactive)
+        assertEquals(setOf("archived", "inactive"), vm.uiState.first { it.archivedCount == 0 }.rows.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `machine filters use the selected archive scope and do not revive vanished choices`() = runTest {
+        val (vm, store, _) = buildViewModel()
+        fun archived(id: String, machine: String) = summary(id, machineId = machine).let { it.copy(metadata = it.metadata?.copy(lifecycleState = "archived")) }
+        store.set(summary("current", machineId = "m1"), archived("old1", "m2"), archived("old2", "m3"))
+        assertEquals(listOf("m1"), vm.uiState.first { it.archivedCount == 2 }.machineFilters.map { it.id })
+        vm.setShowArchived(true)
+        vm.uiState.first { it.showArchived && it.machineFilters.size == 2 }
+        vm.setMachineFilter("m2")
+        assertEquals(listOf("old1"), vm.uiState.first { it.activeMachineFilter == "m2" }.rows.map { it.id })
+        vm.setShowArchived(false)
+        assertNull(vm.uiState.first { !it.showArchived }.activeMachineFilter)
+        runCurrent()
+        vm.setShowArchived(true)
+        assertNull(vm.uiState.first { it.showArchived }.activeMachineFilter)
+    }
+
+    @Test
+    fun `explicit reopen returns to the main scope but failed reopen stays in archive`() = runTest {
+        val (vm, store, _) = buildViewModel()
+        vm.setShowArchived(true)
+        vm.uiState.first { it.showArchived }
+        store.reopenFailure = IllegalStateException("offline")
+        vm.reopenSession("old"); runCurrent()
+        assertTrue(vm.uiState.value.showArchived)
+        store.reopenFailure = null
+        vm.reopenSession("old")
+        vm.uiState.first { !it.showArchived }
+        assertTrue(store.calls.value.contains("reopen:old"))
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
     fun `vanished filter stays cleared when sessions return and is isolated per home`() = runTest {

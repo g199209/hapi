@@ -587,4 +587,22 @@
     <string name="chat_status_idle">Ожидание</string>
     <string name="chat_status_inactive">Нет подключения</string>
     <string name="chat_status_archived">В архиве</string>
+    <string name="sessions_tab_current">Сеансы</string>
+    <string name="sessions_tab_archived">Архив (%1$d)</string>
+    <string name="sessions_archived_empty_title">Архив пуст</string>
+    <string name="sessions_archived_empty_hint">Архивные беседы сохраняются здесь. Откройте для просмотра или выберите «Открыть снова», чтобы продолжить.</string>
+    <string name="sessions_search_hint">Поиск сеансов или каталогов</string>
+    <string name="sessions_search_clear">Очистить поиск</string>
+    <string name="sessions_search_empty">Нет подходящих сеансов</string>
+    <string name="sessions_date_filter">Фильтр по дате</string>
+    <string name="sessions_date_hint">По последнему обновлению в местном времени. Выберите день или диапазон.</string>
+    <string name="sessions_date_selected">Обновлено: %1$s</string>
+    <string name="sessions_date_clear">Сбросить даты</string>
+    <string name="sessions_filter_cancel">Отмена</string>
+    <string name="sessions_filter_apply">Применить</string>
+    <string name="sessions_group_other">Прочее</string>
+    <string name="sessions_group_expanded">Развёрнуто</string>
+    <string name="sessions_group_collapsed">Свёрнуто</string>
+    <string name="sessions_search_open">Поиск сеансов</string>
+    <string name="sessions_search_close">Закрыть поиск</string>
 </resources>

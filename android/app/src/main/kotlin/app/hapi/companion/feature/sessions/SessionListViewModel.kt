@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
@@ -66,6 +67,10 @@ data class SessionListUiState(
     val hasLoaded: Boolean,
     /** Last refresh failed — show the offline banner over snapshot data. */
     val isOffline: Boolean,
+    val showArchived: Boolean = false,
+    val archivedCount: Int = 0,
+    val listFilter: SessionListFilter = SessionListFilter(),
+    val groups: List<SessionDirectoryGroup> = emptyList(),
 ) {
     val hasMachineFilters: Boolean get() = machineFilters.size >= 2
 }
@@ -92,6 +97,11 @@ class SessionListViewModel(
     private val hubKey: String = "default",
 ) {
     private val machineFilter = MutableStateFlow<String?>(null)
+    private val showArchived = MutableStateFlow(false)
+    private val listFilter = MutableStateFlow(SessionListFilter())
+    // Text input must observe its source directly, without the derived list
+    // combine pipeline echoing older values between IME edits.
+    val filters: StateFlow<SessionListFilter> = listFilter.asStateFlow()
     private val isRefreshing = MutableStateFlow(false)
     private val isOffline = MutableStateFlow(false)
     private val hasRefreshedOnce = MutableStateFlow(false)
@@ -110,10 +120,11 @@ class SessionListViewModel(
 
     init {
         scope.launch {
-            combine(sessionStore.sessions, machineFilter) { _, filter -> filter }.collect { selected ->
+            combine(sessionStore.sessions, machineFilter, showArchived) { _, filter, _ -> filter }.collect { selected ->
                 // Validate against the current snapshot, not an older combined
                 // emission that may have queued before the user selected a row.
-                val ids = sessionStore.sessions.value.map { it.metadata?.machineId ?: UNKNOWN_MACHINE_ID }.toSet()
+                val ids = sessionStore.sessions.value.filter { isArchived(it) == showArchived.value }
+                    .map { it.metadata?.machineId ?: UNKNOWN_MACHINE_ID }.toSet()
                 if (selected != null && (ids.size < 2 || selected !in ids)) {
                     machineFilter.compareAndSet(selected, null)
                 }
@@ -140,16 +151,18 @@ class SessionListViewModel(
         sessionStore.sessions,
         machineStore.machines,
         lastSeenStore.state,
-        machineFilter,
+        combine(machineFilter, showArchived, listFilter) { filter, archived, content -> Triple(filter, archived, content) },
         combine(isRefreshing, isOffline, hasRefreshedOnce) { refreshing, offline, loaded ->
             Triple(refreshing, offline, loaded)
         },
-    ) { sessions, machines, lastSeen, filter, (refreshing, offline, refreshedOnce) ->
+    ) { sessions, machines, lastSeen, (filter, archived, content), (refreshing, offline, refreshedOnce) ->
         buildUiState(
             sessions = sessions,
             machines = machines,
             lastSeen = lastSeen.lastSeen,
             filter = filter,
+            archived = archived,
+            content = content,
             isRefreshing = refreshing,
             isOffline = offline,
             hasLoaded = refreshedOnce || sessions.isNotEmpty(),
@@ -216,6 +229,22 @@ class SessionListViewModel(
         }
     }
 
+    fun setShowArchived(archived: Boolean) {
+        showArchived.value = archived
+    }
+
+    fun setSearchQuery(query: String) {
+        listFilter.value = listFilter.value.copy(query = query)
+    }
+
+    fun setDateRange(dates: SessionDateRange?) {
+        listFilter.value = listFilter.value.copy(dates = dates)
+    }
+
+    fun clearListFilters() {
+        listFilter.value = SessionListFilter()
+    }
+
     fun setMachineFilter(machineId: String?) {
         machineFilter.value = machineId
     }
@@ -239,7 +268,7 @@ class SessionListViewModel(
         }
     }
 
-    /** `POST /sessions/:id/archive` with optimistic removal; failures surface on [errors]. */
+    /** Archive on the hub; visible membership follows its lifecycle metadata. */
     fun archiveSession(sessionId: String) {
         scope.launch {
             try {
@@ -295,7 +324,9 @@ class SessionListViewModel(
     fun reopenSession(sessionId: String) {
         scope.launch {
             try {
-                _reopened.tryEmit(sessionStore.reopenSession(sessionId).sessionId)
+                val reopenedId = sessionStore.reopenSession(sessionId).sessionId
+                showArchived.value = false
+                _reopened.tryEmit(reopenedId)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -311,17 +342,20 @@ class SessionListViewModel(
         machines: List<Machine>,
         lastSeen: Map<String, Long>,
         filter: String?,
+        archived: Boolean,
+        content: SessionListFilter,
         isRefreshing: Boolean,
         isOffline: Boolean,
         hasLoaded: Boolean,
     ): SessionListUiState {
+        val scopedSessions = sessions.filter { isArchived(it) == archived }
         val names = machines.mapNotNull { machine ->
             val metadata = machine.metadata ?: return@mapNotNull null
             val name = metadata.displayName?.trim()?.takeIf { it.isNotEmpty() }
                 ?: metadata.host.trim().takeIf { it.isNotEmpty() }
             name?.let { machine.id to it }
         }.toMap()
-        val sessionMachineIds = sessions.map { it.metadata?.machineId ?: UNKNOWN_MACHINE_ID }.toSet()
+        val sessionMachineIds = scopedSessions.map { it.metadata?.machineId ?: UNKNOWN_MACHINE_ID }.toSet()
         val nameCounts = names.filterKeys { it in sessionMachineIds }.values.groupingBy { it.lowercase(java.util.Locale.ROOT) }.eachCount()
         val shortIds = sessionMachineIds.associateWith { id ->
             var length = minOf(8, id.length)
@@ -330,7 +364,7 @@ class SessionListViewModel(
         }
 
         // Derive choices before filtering so the selection cannot hide alternatives.
-        val filters = sessions
+        val filters = scopedSessions
             .groupBy { it.metadata?.machineId ?: UNKNOWN_MACHINE_ID }
             .map { (id, group) ->
                 MachineFilterUi(
@@ -350,16 +384,21 @@ class SessionListViewModel(
         val activeFilter = filter
             ?.takeIf { filters.size >= 2 && filters.any { chip -> chip.id == it } }
 
-        val visible = if (activeFilter == null) {
-            sessions
+        val machineScoped = if (activeFilter == null) {
+            scopedSessions
         } else {
-            sessions.filter { (it.metadata?.machineId ?: UNKNOWN_MACHINE_ID) == activeFilter }
+            scopedSessions.filter { (it.metadata?.machineId ?: UNKNOWN_MACHINE_ID) == activeFilter }
         }
 
         // With one machine — or a machine filter active — every visible row
         // shares the machine, so repeating it per row is noise.
         val showMachine = filters.size >= 2 && activeFilter == null
 
+        val visible = machineScoped.filter { session ->
+            (content.dates?.contains(session.updatedAt) != false) &&
+                matchesSessionSearch(session, content.query,
+                    names[session.metadata?.machineId] ?: session.metadata?.machineId.orEmpty())
+        }
         val rows = visible.map { summary ->
             val title = sessionTitle(summary)
             val preview = summary.lastMessagePreview?.takeIf { it.isNotBlank() }
@@ -381,6 +420,10 @@ class SessionListViewModel(
             rows = rows,
             machineFilters = filters,
             activeMachineFilter = activeFilter,
+            showArchived = archived,
+            archivedCount = sessions.count(::isArchived),
+            listFilter = content,
+            groups = groupSessionRows(rows),
             isRefreshing = isRefreshing,
             hasLoaded = hasLoaded,
             isOffline = isOffline,
@@ -388,6 +431,8 @@ class SessionListViewModel(
     }
 
     companion object {
+        fun isArchived(session: SessionSummary): Boolean = session.metadata?.lifecycleState == "archived"
+
         /** `getSessionTitle` (`web/src/lib/sessionTitle.ts`). */
         fun sessionTitle(summary: SessionSummary): String {
             val metadata = summary.metadata

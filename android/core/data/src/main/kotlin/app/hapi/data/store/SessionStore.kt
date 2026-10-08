@@ -167,8 +167,13 @@ class SessionStore(
 
     override suspend fun loadSessionDetail(sessionId: String): Session {
         val session = api.getSession(sessionId).session
-        _details.update { it + (sessionId to session) }
-        return session
+        _details.update { map ->
+            val current = map[sessionId]
+            if (staleUnarchive(current?.metadata?.lifecycleState, current?.metadataVersion,
+                    session.metadata?.lifecycleState, session.metadataVersion)) map
+            else map + (sessionId to session)
+        }
+        return _details.value[sessionId] ?: session
     }
 
     override fun releaseDetail(sessionId: String) {
@@ -190,7 +195,14 @@ class SessionStore(
     override suspend fun refresh() {
         refreshMutex.withLock {
             val response = api.getSessions()
-            updateSummaries { sortSessionSummaries(response.sessions) }
+            updateSummaries { current ->
+                val existing = current.associateBy { it.id }
+                sortSessionSummaries(response.sessions.map { incoming ->
+                    val prior = existing[incoming.id]
+                    if (prior != null && staleUnarchive(prior.metadata?.lifecycleState, prior.metadataVersion,
+                            incoming.metadata?.lifecycleState, incoming.metadataVersion)) prior else incoming
+                })
+            }
         }
     }
 
@@ -264,18 +276,18 @@ class SessionStore(
     }
 
     override suspend fun archiveSession(sessionId: String) {
-        val removed = _sessions.value.firstOrNull { it.id == sessionId }
-        updateSummaries { list -> list.filter { it.id != sessionId } }
+        // The shared cache contains both current and archived sessions. Keep
+        // the row and let the list partition by authoritative lifecycle state.
+        // A failed archive therefore never needs to restore a stale snapshot.
+        api.archiveSession(sessionId)
         try {
-            api.archiveSession(sessionId)
-        } catch (error: Exception) {
-            if (removed != null) {
-                updateSummaries { list ->
-                    if (list.any { it.id == sessionId }) list
-                    else sortSessionSummaries(list + removed)
-                }
-            }
-            throw error
+            refresh()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            // The operation already succeeded. A failed follow-up read is a
+            // sync problem, not an archive failure; retry without re-archiving.
+            scheduleRefresh()
         }
     }
 
@@ -362,6 +374,12 @@ class SessionStore(
         // parse, then the REST fallback.
         val full = parseFullSession(data)?.takeIf { it.id == sessionId }
         if (full != null) {
+            val summary = _sessions.value.firstOrNull { it.id == sessionId }
+            val detail = _details.value[sessionId]
+            if (staleUnarchive(summary?.metadata?.lifecycleState, summary?.metadataVersion,
+                    full.metadata?.lifecycleState, full.metadataVersion)
+                || staleUnarchive(detail?.metadata?.lifecycleState, detail?.metadataVersion,
+                    full.metadata?.lifecycleState, full.metadataVersion)) return
             _details.update { it + (sessionId to full) }
             upsertSummary(full)
             return
@@ -409,6 +427,8 @@ class SessionStore(
         updateSummaries { list ->
             val index = list.indexOfFirst { it.id == session.id }
             val existing = if (index >= 0) list[index] else null
+            if (staleUnarchive(existing?.metadata?.lifecycleState, existing?.metadataVersion,
+                    session.metadata?.lifecycleState, session.metadataVersion)) return@updateSummaries list
             // The projection cannot derive the hub-computed scheduled-message
             // fields — carry them over from the previous row (web
             // `upsertSessionSummary`).
@@ -421,6 +441,11 @@ class SessionStore(
             sortSessionSummaries(next)
         }
     }
+
+    /** Reopening creates a newer metadata version. Older REST/full SSE must
+     * not undo an archive already observed through a versioned update. */
+    private fun staleUnarchive(currentState: String?, currentVersion: Long?, nextState: String?, nextVersion: Long): Boolean =
+        currentState == "archived" && nextState != "archived" && currentVersion != null && nextVersion <= currentVersion
 
     /** Detail patch with strict-`>` versioned gates; true when a row was cached. */
     private fun patchDetail(sessionId: String, patch: SessionPatch): Boolean {
@@ -443,7 +468,10 @@ class SessionStore(
             if (index < 0) return@updateSummaries list
             present = true
             val current = list[index]
-            val next = SummaryPatching.applySessionSummaryPatch(current, patch)
+            val incomingMetadata = patch.metadata
+            val safePatch = if (incomingMetadata != null && staleUnarchive(current.metadata?.lifecycleState, current.metadataVersion,
+                    incomingMetadata.value?.lifecycleState, incomingMetadata.version)) patch.copy(metadata = null) else patch
+            val next = SummaryPatching.applySessionSummaryPatch(current, safePatch)
             // Keep-alive noise: activeAt-only movement keeps the previous
             // list identity (no emission, no re-sort, no snapshot write).
             if (SummaryPatching.isRenderIrrelevantPatch(current, next)) return@updateSummaries list

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -34,6 +37,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Tab
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -41,9 +46,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -79,7 +88,7 @@ import app.hapi.protocol.wire.TodoProgress
  *   connected is the resting state, so no presence dot (web parity);
  * - long-press → actions sheet: pin (none/project/global), rename (dialog),
  *   reopen (inactive rows; navigates into the possibly-superseding id),
- *   archive, delete (confirm; 409 while active) — optimistic store updates;
+ *   archive, delete (confirm; 409 while active) — lifecycle-aware store updates;
  *   failures land in a snackbar (B-M2b + B-M3ce).
  *
  * The host (`HomeScreen` via Navigation) constructs the ViewModel from the
@@ -97,7 +106,10 @@ fun SessionListScreen(
     onNewSession: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val contentFilter by viewModel.filters.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    // Keep folds even when filtering temporarily removes the entire list.
+    var collapsedGroups by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var sheetRow by remember { mutableStateOf<SessionRowUi?>(null) }
     var renameRow by remember { mutableStateOf<SessionRowUi?>(null) }
     var deleteRow by remember { mutableStateOf<SessionRowUi?>(null) }
@@ -141,6 +153,13 @@ fun SessionListScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
+            SecondaryTabRow(selectedTabIndex = if (state.showArchived) 1 else 0) {
+                Tab(selected = !state.showArchived, onClick = { viewModel.setShowArchived(false) },
+                    text = { Text(stringResource(R.string.sessions_tab_current)) })
+                Tab(selected = state.showArchived, onClick = { viewModel.setShowArchived(true) },
+                    text = { Text(stringResource(R.string.sessions_tab_archived, state.archivedCount)) })
+            }
+            SessionDateFilterSummary(contentFilter.dates, onClear = { viewModel.setDateRange(null) })
             if (state.isOffline) {
                 OfflineBanner()
             }
@@ -159,16 +178,30 @@ fun SessionListScreen(
                     .weight(1f),
             ) {
                 if (state.rows.isEmpty()) {
-                    EmptyState(hasLoaded = state.hasLoaded, isOffline = state.isOffline)
+                    if (state.listFilter.active || state.activeMachineFilter != null) {
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            Text(stringResource(R.string.sessions_search_empty))
+                            TextButton(onClick = { viewModel.clearListFilters(); viewModel.setMachineFilter(null) }) {
+                                Text(stringResource(R.string.sessions_clear_filter))
+                            }
+                        }
+                    } else EmptyState(hasLoaded = state.hasLoaded, isOffline = state.isOffline, archived = state.showArchived)
                 } else {
-                    SessionRows(
-                        rows = state.rows,
-                        onOpen = { sessionId ->
-                            viewModel.onSessionOpened(sessionId)
-                            onOpenSession(sessionId)
-                        },
-                        onLongPress = { sheetRow = it },
-                    )
+                    key(state.showArchived) {
+                        SessionGroups(
+                            state = state,
+                            collapsedKeys = collapsedGroups,
+                            onToggleGroup = { key ->
+                                collapsedGroups = ArrayList(if (key in collapsedGroups) collapsedGroups - key else collapsedGroups + key)
+                            },
+                            onOpen = { sessionId ->
+                                viewModel.onSessionOpened(sessionId)
+                                onOpenSession(sessionId)
+                            },
+                            onLongPress = { sheetRow = it },
+                        )
+                    }
                 }
             }
         }
@@ -240,6 +273,54 @@ fun SessionListScreen(
 }
 
 // ------------------------------------------------------------------ list --
+
+@Composable
+private fun SessionGroups(
+    state: SessionListUiState,
+    collapsedKeys: List<String>,
+    onToggleGroup: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    onLongPress: (SessionRowUi) -> Unit,
+) {
+    val globalPins = state.rows.filter { it.summary.globalPinned == true }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        if (globalPins.isNotEmpty()) {
+            item(key = "global-pins") { SectionHeader(stringResource(R.string.sessions_section_pinned)) }
+            items(globalPins, key = { "session:${it.id}" }) { row ->
+                SessionRow(row, onOpen, onLongPress)
+            }
+        }
+        state.groups.forEach { group ->
+            val foldKey = "${state.showArchived}:${group.key}"
+            val isCollapsed = !state.listFilter.active && foldKey in collapsedKeys
+            item(key = "directory:${group.key}") {
+                val title = listOfNotNull(group.label ?: stringResource(R.string.sessions_group_other),
+                    group.machine?.let { machineFilterLabel(it) }).joinToString(" · ")
+                val expandedLabel = stringResource(if (isCollapsed) R.string.sessions_group_collapsed else R.string.sessions_group_expanded)
+                Row(Modifier.fillMaxWidth().semantics { stateDescription = expandedLabel }
+                    .clickable(enabled = !state.listFilter.active) {
+                        onToggleGroup(foldKey)
+                    }.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (isCollapsed) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.Default.KeyboardArrowDown, contentDescription = null,
+                        modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(6.dp))
+                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text("(${group.rows.size})", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            if (!isCollapsed) {
+                items(group.rows, key = { "session:${it.id}" }) { row ->
+                    // Directory/machine belong to the group header; retain only
+                    // worktree identity on child rows, avoiding repeated paths.
+                    val worktree = row.summary.metadata?.worktree
+                    SessionRow(row.copy(meta = worktree?.name?.ifBlank { worktree.branch }, machine = null), onOpen, onLongPress)
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun SessionRows(
@@ -464,7 +545,7 @@ private fun OfflineBanner() {
 }
 
 @Composable
-private fun EmptyState(hasLoaded: Boolean, isOffline: Boolean) {
+private fun EmptyState(hasLoaded: Boolean, isOffline: Boolean, archived: Boolean = false) {
     // verticalScroll keeps the pull-to-refresh gesture available even though
     // there is nothing to scroll.
     Column(
@@ -480,6 +561,7 @@ private fun EmptyState(hasLoaded: Boolean, isOffline: Boolean) {
                 when {
                     !hasLoaded && !isOffline -> R.string.sessions_empty_loading_title
                     isOffline -> R.string.sessions_empty_offline_title
+                    archived -> R.string.sessions_archived_empty_title
                     else -> R.string.sessions_empty_title
                 },
             ),
@@ -491,6 +573,7 @@ private fun EmptyState(hasLoaded: Boolean, isOffline: Boolean) {
                 when {
                     !hasLoaded && !isOffline -> R.string.sessions_empty_loading_hint
                     isOffline -> R.string.sessions_empty_offline_hint
+                    archived -> R.string.sessions_archived_empty_hint
                     else -> R.string.sessions_empty_hint
                 },
             ),
@@ -534,7 +617,9 @@ private fun SessionActionsSheet(
         if (!summary.active) {
             SheetAction(stringResource(R.string.sessions_action_reopen), onClick = onReopen)
         }
-        SheetAction(stringResource(R.string.sessions_action_archive), destructive = true, onClick = onArchive)
+        if (!SessionListViewModel.isArchived(summary) && (summary.active || summary.metadata?.lifecycleState in listOf("running", "idle"))) {
+            SheetAction(stringResource(R.string.sessions_action_archive), destructive = true, onClick = onArchive)
+        }
         SheetAction(stringResource(R.string.sessions_action_delete), destructive = true, onClick = onDelete)
         Spacer(modifier = Modifier.size(16.dp))
     }

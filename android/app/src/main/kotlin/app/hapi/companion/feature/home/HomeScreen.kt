@@ -1,12 +1,16 @@
 package app.hapi.companion.feature.home
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -30,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
@@ -38,11 +43,13 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.hapi.companion.R
+import app.hapi.companion.feature.sessions.SessionDateFilterDialog
+import app.hapi.companion.feature.sessions.SessionSearchInput
 import app.hapi.companion.feature.sessions.SessionFilterSheet
 import app.hapi.companion.feature.sessions.SessionListScreen
 import app.hapi.companion.feature.sessions.SessionListViewModel
 
-/** Session list with one hub/settings menu, centered title and a filter action. */
+/** Session list with hub menu and compact search/date actions in the toolbar. */
 @Composable
 fun HomeScreen(
     viewModel: SessionListViewModel,
@@ -58,6 +65,16 @@ fun HomeScreen(
     onOpenSettings: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val filter by viewModel.filters.collectAsState()
+    val focus = LocalFocusManager.current
+    var searchExpanded by rememberSaveable(activeHubUrl) { mutableStateOf(false) }
+    var showDates by rememberSaveable(activeHubUrl) { mutableStateOf(false) }
+    val closeSearch = {
+        viewModel.setSearchQuery("")
+        searchExpanded = false
+        focus.clearFocus()
+    }
+    BackHandler(enabled = searchExpanded) { closeSearch() }
     var showFilters by rememberSaveable(activeHubUrl) { mutableStateOf(false) }
     var showSignOutConfirm by rememberSaveable(activeHubUrl) { mutableStateOf(false) }
 
@@ -73,6 +90,12 @@ fun HomeScreen(
                 onPairAnotherHub = onPairAnotherHub,
                 onOpenSettings = onOpenSettings,
                 onSignOut = { showSignOutConfirm = true },
+                searchExpanded = searchExpanded,
+                searchQuery = filter.query,
+                onSearchQueryChange = viewModel::setSearchQuery,
+                onToggleSearch = { if (searchExpanded) closeSearch() else searchExpanded = true },
+                hasDateFilter = filter.dates != null,
+                onOpenDates = { focus.clearFocus(); showDates = true },
             )
         },
     ) { padding ->
@@ -84,6 +107,12 @@ fun HomeScreen(
         )
     }
 
+    if (showDates) {
+        SessionDateFilterDialog(filter.dates, onDismiss = { showDates = false }, onApply = {
+            viewModel.setDateRange(it)
+            showDates = false
+        })
+    }
     if (showFilters) {
         SessionFilterSheet(state, select = { viewModel.setMachineFilter(it); showFilters = false }, dismiss = { showFilters = false })
     }
@@ -123,11 +152,21 @@ internal fun HomeTopBar(
     onPairAnotherHub: () -> Unit,
     onOpenSettings: (() -> Unit)?,
     onSignOut: () -> Unit,
+    searchExpanded: Boolean = false,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    onToggleSearch: (() -> Unit)? = null,
+    hasDateFilter: Boolean = false,
+    onOpenDates: (() -> Unit)? = null,
 ) {
     var menuOpen by rememberSaveable(activeHubUrl) { mutableStateOf(false) }
     CenterAlignedTopAppBar(
         title = {
-            Text(stringResource(R.string.sessions_section_sessions), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (searchExpanded && onSearchQueryChange != null) {
+                SessionSearchInput(searchQuery, onSearchQueryChange)
+            } else {
+                Text(stringResource(R.string.sessions_section_sessions), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         },
         navigationIcon = {
             // Anchor the only hub menu to its own icon, not the whole toolbar.
@@ -179,6 +218,20 @@ internal fun HomeTopBar(
                 IconButton(onClick = onOpenFilters, modifier = Modifier.size(48.dp).semantics { stateDescription = filterState }) {
                     BadgedBox(badge = { if (hasActiveFilter) Badge() }) {
                         Icon(painterResource(R.drawable.ic_filter_list), stringResource(R.string.sessions_filters))
+                    }
+                }
+            }
+            onToggleSearch?.let { toggle ->
+                IconButton(onClick = toggle, modifier = Modifier.size(48.dp)) {
+                    Icon(if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = stringResource(if (searchExpanded) R.string.sessions_search_close else R.string.sessions_search_open))
+                }
+            }
+            onOpenDates?.let { openDates ->
+                IconButton(onClick = openDates, modifier = Modifier.size(48.dp).semantics { selected = hasDateFilter }) {
+                    BadgedBox(badge = { if (hasDateFilter) Badge() }) {
+                        Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.sessions_date_filter),
+                            tint = if (hasDateFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
