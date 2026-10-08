@@ -10,6 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
@@ -138,6 +141,30 @@ object Routes {
     const val SETTINGS_STORAGE = "settings/storage"
 }
 
+/** The restored back stack still belongs to the same hub after rotation.
+ * Track its owner with saved state so an effect restarting is not mistaken
+ * for an actual hub switch. Sign-out must still discard protected screens. */
+@Composable
+internal fun ObserveActiveHubNavigation(navController: NavHostController, activeHubUrl: String?) {
+    var stackHubUrl by rememberSaveable { mutableStateOf(activeHubUrl) }
+    LaunchedEffect(activeHubUrl) {
+        val hubChanged = stackHubUrl != activeHubUrl
+        stackHubUrl = activeHubUrl
+        if (activeHubUrl == null) {
+            val onPairing = navController.currentDestination
+                ?.hierarchy?.any { it.route == Routes.PAIRING } == true
+            if (!onPairing) {
+                navController.navigateClearingBackStack(Routes.PAIRING)
+            }
+        } else if (hubChanged &&
+            navController.currentDestination?.route in
+                setOf(Routes.CHAT, Routes.FILES, Routes.FILE_VIEWER, Routes.SCRATCHLIST)
+        ) {
+            navController.popBackStack(Routes.HOME, inclusive = false)
+        }
+    }
+}
+
 /**
  * Root navigation: `pairing` (start when no active hub) ⇄ `home` (session
  * list) → `chat/{sessionId}`. Reacts to the graph's cross-cutting flows —
@@ -201,23 +228,7 @@ fun HapiNavigation() {
         }
     }
 
-    // Last hub signed out (or roster wiped): nothing to show but pairing.
-    // Any other active-hub change invalidates an open chat (old hub's session).
-    LaunchedEffect(registryState.activeHubUrl) {
-        val activeHubUrl = registryState.activeHubUrl
-        if (activeHubUrl == null) {
-            val onPairing = navController.currentDestination
-                ?.hierarchy?.any { it.route == Routes.PAIRING } == true
-            if (!onPairing) {
-                navController.navigateClearingBackStack(Routes.PAIRING)
-            }
-        } else if (
-            navController.currentDestination?.route in
-                setOf(Routes.CHAT, Routes.FILES, Routes.FILE_VIEWER, Routes.SCRATCHLIST)
-        ) {
-            navController.popBackStack(Routes.HOME, inclusive = false)
-        }
-    }
+    ObserveActiveHubNavigation(navController, registryState.activeHubUrl)
 
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.HOME) {
