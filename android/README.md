@@ -347,6 +347,10 @@ readable as labeled snapshots; an epoch reset closes obsolete inspectors.
 
 ## Long messages and reading layout
 
+User bubbles render selectable Markdown (links, emphasis, lists and code),
+retaining input line breaks. Original message text is unchanged; the full
+message reader and full-content copy/export retain the source verbatim.
+
 User prompts remain inline through 8,000 graphemes and 120 source lines. Larger
 prompts show a 2,000-grapheme / 24-line preview and **View full message** opens a
 reader with one 4,000-grapheme / 80-line part mounted. Pagination preserves

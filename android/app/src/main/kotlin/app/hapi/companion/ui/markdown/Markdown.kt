@@ -115,6 +115,8 @@ private object NoOpMarkdownLinkHandler : MarkdownLinkHandler {
 
 val LocalMarkdownLinkHandler = staticCompositionLocalOf<MarkdownLinkHandler> { NoOpMarkdownLinkHandler }
 
+private val LocalMarkdownPreserveLineBreaks = staticCompositionLocalOf { false }
+
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 /**
@@ -126,7 +128,13 @@ val LocalMarkdownLinkHandler = staticCompositionLocalOf<MarkdownLinkHandler> { N
  * monospace text.
  */
 @Composable
-fun Markdown(text: String, modifier: Modifier = Modifier, textStyle: TextStyle? = null, selectable: Boolean = false) {
+fun Markdown(
+    text: String,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle? = null,
+    selectable: Boolean = false,
+    preserveLineBreaks: Boolean = false,
+) {
     val cache = LocalMarkdownRenderCache.current
     val parsed = if (cache == null) {
         remember(text) { prepareDocument(text) }
@@ -139,7 +147,11 @@ fun Markdown(text: String, modifier: Modifier = Modifier, textStyle: TextStyle? 
         cache.cached(text) ?: prepared
     }
     val baseStyle = textStyle ?: MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp)
-    CompositionLocalProvider(LocalTextStyle provides baseStyle, LocalMarkdownSelectable provides selectable) {
+    CompositionLocalProvider(
+        LocalTextStyle provides baseStyle,
+        LocalMarkdownSelectable provides selectable,
+        LocalMarkdownPreserveLineBreaks provides preserveLineBreaks,
+    ) {
         val body: @Composable () -> Unit = {
             Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (parsed != null) MarkdownBlockChildren(parsed.document, parsed)
@@ -488,9 +500,10 @@ private fun MarkdownInlineText(
             override fun onUrl(url: String, decision: HrefDecision) = open { handler.onUrl(url, decision) }
         }
     }
-    val annotated = remember(parent, colors, guardedHandler) {
+    val preserveLineBreaks = LocalMarkdownPreserveLineBreaks.current
+    val annotated = remember(parent, colors, guardedHandler, preserveLineBreaks) {
         buildAnnotatedString {
-            appendInlineChildren(parent, InlineContext(colors, guardedHandler), insideLink = false)
+            appendInlineChildren(parent, InlineContext(colors, guardedHandler, preserveLineBreaks), insideLink = false)
         }
     }
     MarkdownSelectionText(
@@ -516,7 +529,11 @@ private fun MarkdownInlineText(
 
 private class LinkPress { var wasLongPress = false }
 
-private class InlineContext(val colors: HapiExtendedColors, val handler: MarkdownLinkHandler) {
+private class InlineContext(
+    val colors: HapiExtendedColors,
+    val handler: MarkdownLinkHandler,
+    val preserveLineBreaks: Boolean,
+) {
     val linkStyles = TextLinkStyles(
         style = SpanStyle(
             color = colors.link,
@@ -550,9 +567,9 @@ private fun AnnotatedString.Builder.appendInlineNode(node: Node, ctx: InlineCont
             val literal = node.literal.orEmpty()
             if (insideLink) append(literal) else appendTextWithFilePaths(literal, ctx)
         }
-        // Soft breaks collapse to spaces on the assistant surface (web parity;
-        // user prompts get a breaks-preserving variant later).
-        is SoftLineBreak -> append(' ')
+        // User prompts retain entered line breaks; assistant prose keeps its
+        // existing CommonMark soft-break behavior. The cached AST is shared.
+        is SoftLineBreak -> append(if (ctx.preserveLineBreaks) '\n' else ' ')
         is HardLineBreak -> append('\n')
         is Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
             appendInlineChildren(node, ctx, insideLink)

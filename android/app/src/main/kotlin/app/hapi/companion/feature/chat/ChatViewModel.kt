@@ -7,6 +7,7 @@ import app.hapi.companion.feature.chat.composer.ChatDrafts
 import app.hapi.companion.feature.chat.composer.SlashCommands
 import app.hapi.companion.feature.chat.composer.appendTranscript
 import app.hapi.companion.ui.markdown.MarkdownRenderCache
+import app.hapi.protocol.chat.UserTextBlock
 import app.hapi.protocol.chat.AgentTextBlock
 import app.hapi.protocol.chat.AgentReasoningBlock
 import app.hapi.companion.feature.sessions.SessionListViewModel
@@ -1788,6 +1789,7 @@ class ChatViewModel(
         inspection.update(visibleBlocks, window.epoch)
         val sources = visibleBlocks.mapNotNull { block ->
             when (block) {
+                is UserTextBlock -> messagePreview(block.text).text
                 is AgentTextBlock -> block.text
                 is AgentReasoningBlock -> block.text
                 is ToolCallBlock -> planProposalMarkdown(block.tool)

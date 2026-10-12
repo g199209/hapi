@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,6 +33,7 @@ import app.hapi.companion.R
 import app.hapi.companion.feature.chat.LocalChatInteractions
 import app.hapi.companion.feature.chat.LocalChatInspection
 import app.hapi.companion.feature.chat.messagePreview
+import app.hapi.companion.ui.markdown.Markdown
 import app.hapi.companion.ui.theme.HapiTypography
 import app.hapi.companion.feature.chat.attachments.PreviewImage
 import app.hapi.companion.feature.chat.attachments.rememberPreviewImage
@@ -42,8 +42,8 @@ import app.hapi.protocol.chat.ChatAttachment
 import app.hapi.protocol.chat.UserTextBlock
 
 /**
- * Operator prompt: right-aligned bubble (whitespace preserved — prompts are
- * not rendered as markdown, matching the web user bubble), attachments as
+ * Operator prompt: right-aligned, selectable Markdown bubble with input line
+ * breaks preserved. Attachments render as
  * image thumbnails (decoded from the wire `previewUrl` data URL — both
  * Android- and web-sent messages carry one, and optimistic rows do too, so
  * thumbnails appear instantly on send) or filename chips, and a failed-send
@@ -65,9 +65,12 @@ fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
                     modifier = Modifier.widthIn(max = maxBubbleWidth),
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        SelectionContainer {
-                            Text(text = preview.text, style = HapiTypography.body)
-                        }
+                        Markdown(
+                            text = preview.text,
+                            textStyle = HapiTypography.body,
+                            selectable = true,
+                            preserveLineBreaks = true,
+                        )
                         if (preview.end < block.text.length) {
                             TextButton(onClick = { inspection?.openMessage(block.id) }, enabled = inspection != null) {
                                 Text(stringResource(R.string.chat_view_full_message))
