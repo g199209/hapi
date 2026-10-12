@@ -53,7 +53,8 @@ const messageSchema = z.object({
     // Client-provided origin timestamp (epoch ms) — e.g. a Claude transcript
     // entry's own `timestamp`. Only honored for agent messages (no localId);
     // see addMessage in messages.ts.
-    createdAt: z.number().optional()
+    createdAt: z.number().optional(),
+    projectedAt: z.number().finite().nonnegative().optional()
 })
 
 const updateMetadataSchema = z.object({
@@ -135,7 +136,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
 
-        const { sid, localId, createdAt } = parsed.data
+        const { sid, localId, createdAt, projectedAt } = parsed.data
         const raw = parsed.data.message
 
         const content = typeof raw === 'string'
@@ -159,7 +160,17 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
 
-        const msg = store.messages.addMessage(sid, content, localId, undefined, createdAt)
+        const epoch = store.messages.getMessageEpoch(sid)
+        const msg = projectedAt !== undefined && localId
+            ? store.messages.addProjectedMessage(sid, content, localId, projectedAt)
+            : store.messages.addMessage(sid, content, localId, undefined, createdAt)
+        if (store.messages.getMessageEpoch(sid) !== epoch) {
+            onWebappEvent?.({ type: 'messages-invalidated', sessionId: sid })
+        }
+
+        if (projectedAt !== undefined && localId) {
+            onWebappEvent?.({ type: 'messages-consumed', sessionId: sid, localIds: [localId], invokedAt: msg.invokedAt! })
+        }
 
         // A reasoning stream arrives as a series of growing snapshots under one
         // stable id, so a stream should cost one row rather than one per
@@ -457,7 +468,20 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // batch contract, so preserve its original timestamp even when IDs are
         // heterogeneous, replayed, or unknown. `steered` is a live-only signal
         // (never persisted) that marks mid-turn delivery for the web badge.
-        onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds, invokedAt, ...(data.steered === true ? { steered: true } : {}) })
+        if ((sessionAccess.value.metadata as { capabilities?: { concurrentClients?: boolean } } | null)?.capabilities?.concurrentClients) {
+            // Queue reconciliation can ACK a native input again after its
+            // projection. Publish its persisted position, not reconnect time.
+            const positions = new Map(store.messages.getLocalMessageStates(data.sid, localIds).map(state => [state.localId, state.invokedAt]));
+            const groups = new Map<number, string[]>();
+            for (const id of localIds) {
+                const at = positions.get(id) ?? invokedAt;
+                groups.set(at, [...(groups.get(at) ?? []), id]);
+            }
+            for (const [at, ids] of groups) onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds: ids,
+                invokedAt: at, ...(data.steered === true ? { steered: true } : {}) });
+        } else {
+            onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds, invokedAt, ...(data.steered === true ? { steered: true } : {}) });
+        }
     })
 
     socket.on('messages-indeterminate', (data: { sid: string; localIds: string[] }) => {

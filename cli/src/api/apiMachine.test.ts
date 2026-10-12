@@ -571,6 +571,7 @@ describe('ApiMachineClient Codex transcript handlers', () => {
         else process.env.CODEX_HOME = originalCodexHome
         rmSync(workspaceRoot, { recursive: true, force: true })
         rmSync(outsideRoot, { recursive: true, force: true })
+        vi.unstubAllEnvs()
         rmSync(codexHome, { recursive: true, force: true })
     })
 
@@ -598,7 +599,8 @@ describe('ApiMachineClient Codex transcript handlers', () => {
         }
     })
 
-    it('filters import-by-sessionId Codex sessions to workspace roots before returning message bodies', async () => {
+    it.each([undefined, 'unix:///test/codex.sock'])('marks import RPC history for V2 projection with endpoint %s', async (endpoint) => {
+        vi.stubEnv('HAPI_CODEX_APP_SERVER_ENDPOINT', endpoint)
         writeCodexTranscript(codexHome, 'allowed.jsonl', {
             id: 'allowed-session-id',
             cwd: workspaceRoot
@@ -617,9 +619,10 @@ describe('ApiMachineClient Codex transcript handlers', () => {
             })
 
             expect(result).toMatchObject({ success: true })
-            const sessions = (result as { sessions: Array<{ id: string; messages?: unknown[] }> }).sessions
+            const sessions = (result as { sessions: Array<{ id: string; messages?: unknown[]; sharedProjection?: boolean }> }).sessions
             expect(sessions.map((session) => session.id)).toEqual(['allowed-session-id'])
             expect(sessions[0]?.messages).toHaveLength(1)
+            expect(sessions[0]?.sharedProjection).toBe(true)
         } finally {
             client.shutdown()
         }

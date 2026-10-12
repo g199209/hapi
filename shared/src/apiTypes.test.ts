@@ -15,6 +15,7 @@ describe('ListCodexSessionsRpcResponseSchema', () => {
             sessions: [{
                 id: 'codex-session-id',
                 title: 'Codex Session',
+                sharedProjection: true,
                 file: '/home/user/.codex/sessions/session.jsonl',
                 modifiedAt: 1_000,
                 messages: [{
@@ -33,6 +34,7 @@ describe('ListCodexSessionsRpcResponseSchema', () => {
         expect(parsed.success).toBe(true)
         if (parsed.success) {
             expect(parsed.sessions[0]?.messages).toHaveLength(1)
+            expect(parsed.sessions[0]?.sharedProjection).toBe(true)
         }
     })
 })

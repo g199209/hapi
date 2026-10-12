@@ -218,7 +218,8 @@ export const CodexLocalSessionSummarySchema = z.object({
 })
 
 export const CodexLocalSessionWithMessagesSchema = CodexLocalSessionSummarySchema.extend({
-    messages: z.array(CodexImportedMessageSchema)
+    messages: z.array(CodexImportedMessageSchema),
+    sharedProjection: z.boolean().optional()
 })
 
 export const ListCodexSessionsRpcRequestSchema = z.object({

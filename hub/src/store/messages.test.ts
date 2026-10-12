@@ -711,3 +711,27 @@ describe('deleteLiveReasoningSnapshots', () => {
         expect(reasoningTexts(store, session.id)).toEqual([])
     })
 })
+
+describe('native projection positions', () => {
+    it('orders a late preface before tools and makes replay idempotent', () => {
+        const store = makeStore(); const session = makeSession(store, 'native-order');
+        store.messages.addProjectedMessage(session.id, { tool: 'pwd' }, 'tool', 1002);
+        store.messages.addProjectedMessage(session.id, { text: 'preface' }, 'preface', 1000);
+        expect(store.messages.getMessagesByPosition(session.id, 10).map(m => m.localId)).toEqual(['preface', 'tool']);
+        const epoch = store.messages.getMessageEpoch(session.id);
+        store.messages.addProjectedMessage(session.id, { text: 'preface' }, 'preface', 1000);
+        expect(store.messages.getMessageEpoch(session.id)).toBe(epoch);
+        expect(store.messages.getAllMessages(session.id)).toHaveLength(2);
+    });
+    it('repositions an accepted input while preserving attachments and consumed ack position', () => {
+        const store = makeStore(); const session = makeSession(store, 'native-input');
+        const content = { role: 'user', content: { type: 'text', text: 'hello' }, meta: { attachments: ['file'] } };
+        const queued = store.messages.addMessage(session.id, content, 'local-input');
+        const result = store.messages.addProjectedMessage(session.id, { role: 'user' }, 'local-input', 1000);
+        expect(result.id).toBe(queued.id); expect(result.content).toEqual(content);
+        expect(result.invokedAt).toBe(1000);
+        store.messages.markMessagesInvoked(session.id, ['local-input'], 2000);
+        expect(store.messages.getAllMessages(session.id)[0].invokedAt).toBe(1000);
+        expect(store.messages.getMessageEpoch(session.id)).toBe(1);
+    });
+});

@@ -106,6 +106,7 @@ type CodexImportedMessageEntry = {
 
 type CodexTranscriptImportData = CodexLocalSessionSummary & {
     messages: CodexImportedMessageContent[]
+    sharedProjection?: boolean
 }
 
 type CodexSessionIndexTitle = {
@@ -2080,7 +2081,10 @@ function importSingleCodexSession(options: {
         }
 
         const comparablePrefixCount = sessionId ? target.comparablePrefixCount : 0
-        const messagesToAppend = transcript.messages.slice(comparablePrefixCount)
+        // External shared-daemon sessions replay the authoritative V2 snapshot.
+        // Seeding the JSONL conversion first would insert a second full history.
+        const sharedProjection = transcript.sharedProjection === true
+        const messagesToAppend = sharedProjection ? [] : transcript.messages.slice(comparablePrefixCount)
         const targetIsActive = Boolean(candidates.find((candidate) => candidate.sessionId === sessionId)?.active)
         if (targetIsActive && messagesToAppend.length > 0) {
             throw new Error('当前会话正在运行且 Codex transcript 有新消息，停止或归档后再同步，避免消息顺序错乱')

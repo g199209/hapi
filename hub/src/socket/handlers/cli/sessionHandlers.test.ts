@@ -53,6 +53,25 @@ function reasoningTextOf(message: { content: unknown }): string {
 }
 
 describe('cli session handlers', () => {
+    it('keeps native item ordering across projection and repeated queue ACKs', () => {
+        const store = new Store(':memory:');
+        const session = store.sessions.getOrCreateSession('native-ack', { capabilities: { concurrentClients: true } }, null, 'default');
+        const socket = new FakeSocket(), events: SyncEvent[] = [];
+        registerSessionHandlers(socket as unknown as CliSocketWithData, {
+            store, resolveSessionAccess: () => ({ ok: true, value: session }), emitAccessError() {},
+            onWebappEvent: event => events.push(event)
+        });
+        store.messages.addMessage(session.id, { role: 'user', content: { type: 'text', text: 'hello' } }, 'local');
+        socket.trigger('message', { sid: session.id, localId: 'local', projectedAt: 1000,
+            message: { role: 'user', content: { type: 'text', text: 'hello' } } });
+        socket.trigger('messages-consumed', { sid: session.id, localIds: ['local'] });
+        const acks = events.filter(event => event.type === 'messages-consumed');
+        expect(acks).toHaveLength(2);
+        expect(acks.every(event => event.type === 'messages-consumed' && event.invokedAt === 1000)).toBe(true);
+        expect(events.some(event => event.type === 'messages-invalidated')).toBe(true);
+        expect(store.messages.getAllMessages(session.id)[0].invokedAt).toBe(1000);
+    });
+
     it.each([undefined, 'terminated', 'error'] as const)('preserves shared Codex pending input on execution exit (%s)', reason => {
         const store = new Store(':memory:')
         const session = store.sessions.getOrCreateSession('shared-end', { flavor: 'codex', capabilities: { concurrentClients: true } }, null, 'default')

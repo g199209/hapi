@@ -8,6 +8,7 @@ import {
     addMessage,
     syncNativeQueuedMessage,
     addImportedMessage,
+    addProjectedMessage,
     cancelQueuedMessage,
     deleteLiveReasoningSnapshots,
     deleteQueuedMessageById,
@@ -65,6 +66,10 @@ export class MessageStore {
 
     deleteLiveReasoningSnapshots(sessionId: string, streamId: string, keepMessageId?: string): number {
         return deleteLiveReasoningSnapshots(this.db, sessionId, streamId, keepMessageId)
+    }
+
+    addProjectedMessage(sessionId: string, content: unknown, localId: string, at: number): StoredMessage {
+        return addProjectedMessage(this.db, sessionId, content, localId, at)
     }
 
     addImportedMessage(sessionId: string, content: unknown, localId: string, createdAt: number): { message: StoredMessage; inserted: boolean } {

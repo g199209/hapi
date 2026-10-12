@@ -260,6 +260,11 @@ async function main(): Promise<void> {
     const scriptDir = dirname(fileURLToPath(import.meta.url));
     const projectRoot = join(scriptDir, '..');
     const workspaceRoot = join(projectRoot, '..');
+    const requiredPackageManager = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')).packageManager;
+    const requiredBun = /^bun@(.+)$/.exec(requiredPackageManager ?? '')?.[1];
+    if (!requiredBun || Bun.version !== requiredBun) {
+        throw new Error(`Executable build requires ${requiredPackageManager}; current compiler is bun@${Bun.version}. Use the pinned project Bun.`);
+    }
     const outdir = resolveOutdir(projectRoot, outdirArg);
     const resolvedTarget = buildAll ? undefined : resolveTarget(target);
     const targets = buildAll ? DEFAULT_TARGETS : [resolvedTarget!];

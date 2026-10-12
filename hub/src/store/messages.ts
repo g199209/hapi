@@ -102,6 +102,28 @@ export type CopyStoredMessageInput = Pick<
     'content' | 'createdAt' | 'localId' | 'invokedAt' | 'scheduledAt' | 'deliveryState'
 >
 
+/** Native item position is authoritative even when completion/replay arrives late.
+ * Keep the original HAPI input body (attachments and composer metadata).
+ */
+export function addProjectedMessage(db: Database, sessionId: string, content: unknown, localId: string, at: number): StoredMessage {
+    const stampedAt = at
+    return db.transaction(() => {
+        const existing = prepareCached(db, 'SELECT * FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1')
+            .get(sessionId, localId) as DbMessageRow | undefined
+        if (existing) {
+            if (existing.invoked_at !== stampedAt) {
+                prepareCached(db, "UPDATE messages SET invoked_at = ?, scheduled_at = NULL, delivery_state = 'queued' WHERE id = ?")
+                    .run(stampedAt, existing.id)
+                bumpMessageEpoch(db, sessionId)
+            }
+            return toStoredMessage({ ...existing, invoked_at: stampedAt, scheduled_at: null, delivery_state: 'queued' })
+        }
+        const message = addMessage(db, sessionId, content, localId, undefined, stampedAt)
+        prepareCached(db, 'UPDATE messages SET invoked_at = ? WHERE id = ?').run(stampedAt, message.id)
+        return { ...message, invokedAt: stampedAt }
+    })()
+}
+
 export function addMessage(
     db: Database,
     sessionId: string,

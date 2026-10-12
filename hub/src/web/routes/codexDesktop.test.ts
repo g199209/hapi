@@ -383,6 +383,18 @@ describe('Codex Desktop import routes', () => {
         }
     })
 
+    it('leaves shared daemon imports for the authoritative V2 projection', async () => {
+        const store = new Store(':memory:');
+        const id = '11111111-1111-4111-8111-111111111111';
+        const result = await importSelectedCodexSessions({ codexSessionIds: [id], store, namespace: 'default',
+            machineId: 'shared-machine', localSessions: [{ id, title: 'Shared', file: '/native.jsonl', modifiedAt: 1000,
+                sharedProjection: true, messages: [{ role: 'user', content: { type: 'text', text: 'hello' }, meta: { sentFrom: 'cli' } }] }] });
+        expect(result.success).toBe(true);
+        const session = store.sessions.getSessionsByNamespace('default')[0];
+        expect((session.metadata as { codexSessionId?: string })?.codexSessionId).toBe(id);
+        expect(store.messages.getAllMessages(session.id)).toHaveLength(0);
+    });
+
     it('imports normal response_item chat messages', async () => {
         const codexHome = mkdtempSync(join(tmpdir(), 'hapi-codex-home-test-'))
         const store = new Store(':memory:')

@@ -36,7 +36,14 @@ function metadataHasDisplayTitle(metadata: { name?: string; summary?: { text: st
 /** Canonical V2 stream only. Stable message IDs also deduplicate snapshot replay at the hub. */
 export class SharedCodexProjection {
     private converter = new AppServerEventConverter();
-    private readonly emitted = new Set<string>();
+    private readonly emitted = new Map<string, number | undefined>();
+    private position?: number;
+    private readonly itemPositions = new Map<string, number>();
+    private readonly turnStarts = new Map<string, number>();
+    private readonly itemCounts = new Map<string, number>();
+    private readonly lastPositions = new Map<string, number>();
+    private readonly userAliases = new Map<string, string>();
+    private readonly userSlots = new Map<string, Array<{ id: string; text: string; completed: boolean }>>();
     private readonly turns = new Map<string, string>();
     private readonly turnModels = new Map<string, string>();
     // Unlike transcript emission, title side effects survive reset/replay.
@@ -56,13 +63,14 @@ export class SharedCodexProjection {
     turnFor(id: string): string | undefined { return this.turns.get(id); }
     reset(): void { this.converter = new AppServerEventConverter(); this.emitted.clear(); }
     private send(body: Record<string, unknown>, key: string): void {
-        if (this.emitted.has(key)) return;
-        this.emitted.add(key);
+        const at = this.position === undefined ? undefined : this.position + (String(body.type).endsWith('result') ? 1 : 0);
+        if (this.emitted.has(key) && this.emitted.get(key) === at) return;
+        this.emitted.set(key, at);
         const id = `codex:${this.threadId}:${key}`;
         this.session.sendAgentMessage(this.parentThreadId && !String(body.type).startsWith('agent-run-') ? {
             type: 'agent-run-trace', agentId: this.threadId, cardId: `codex-agent:${this.threadId}`, message: { ...body, id }, id,
             scope: { role: 'child', threadId: this.threadId, parentThreadId: this.parentThreadId }, scope_role: 'child'
-        } : { ...body, id }, id);
+        } : { ...body, id }, id, ...(at === undefined ? [] : [at]));
     }
 
     private applyDisplayRename(title: string, revision: number): void {
@@ -101,6 +109,26 @@ export class SharedCodexProjection {
         const p = record(params);
         const item = record(p.item);
         const turnId = string(p.turnId) ?? string(record(p.turn).id);
+        const nativeTurn = record(p.turn);
+        if (turnId && typeof nativeTurn.startedAt === 'number') this.turnStarts.set(turnId, nativeTurn.startedAt * 1000);
+        const itemIdForPosition = string(item.id) ?? string(p.itemId);
+        const positionKey = `${turnId}:${itemIdForPosition}`;
+        if (typeof p.projectionAt === 'number') this.itemPositions.set(positionKey, p.projectionAt);
+        else if (turnId && itemIdForPosition && !this.itemPositions.has(positionKey)) {
+            const base = this.turnStarts.get(turnId) ?? (/^[a-f0-9]{8}-[a-f0-9]{4}-7/.test(turnId)
+                ? parseInt(turnId.replaceAll('-', '').slice(0, 12), 16) : undefined);
+            if (base !== undefined) {
+                const index = this.itemCounts.get(turnId) ?? 0;
+                this.itemCounts.set(turnId, index + 1);
+                // Live item starts carry their own position. A delayed final
+                // text stays at its start, while new output appends after the
+                // bridge's ready/usage events. Reconnect snapshots repair gaps.
+                const at = Math.max(Date.now(), (this.lastPositions.get(turnId) ?? base) + 2);
+                this.itemPositions.set(positionKey, at);
+                this.lastPositions.set(turnId, at);
+            }
+        }
+        this.position = this.itemPositions.get(positionKey);
         // Settings may already describe the next turn by the time queued
         // notifications are projected. Never attribute usage to that model.
         if (turnId && method === 'turn/started' && modelAtReceipt && !this.turnModels.has(turnId)) {
@@ -114,13 +142,33 @@ export class SharedCodexProjection {
         // question bridge. Do not also emit their plain-text fallback.
         if (!this.parentThreadId && asyncQuestionsInput(item)) return;
         if (!this.parentThreadId && (method === 'item/started' || method === 'item/completed') && item.type === 'userMessage') {
-            const id = string(item.clientId ?? item.clientUserMessageId) ?? (itemId ? `codex:${this.threadId}:user:${itemId}` : undefined);
+            const text = inputText(item.content);
+            const explicitId = string(item.clientId ?? item.clientUserMessageId);
+            const alias = `${turnId}:${itemId}`;
+            const slots = this.userSlots.get(turnId ?? '') ?? [];
+            let slot = typeof p.userIndex === 'number' ? slots[p.userIndex] : undefined;
+            let id = explicitId ?? this.userAliases.get(alias) ?? slot?.id;
+            if (!id && turnId) {
+                // A live item's placeholder id can be replaced in a later snapshot.
+                // Match that pending occurrence only, never all equal prompt text.
+                slot = slots.find(value => value.text === text && !value.completed)
+                    ?? (method === 'item/completed' ? [...slots].reverse().find(value => value.text === text) : undefined);
+                if (slot) id = slot.id;
+                else {
+                    const index = typeof p.userIndex === 'number' ? p.userIndex : slots.length;
+                    id = `codex:${this.threadId}:user:${turnId}:${index}`;
+                    slot = { id, text, completed: false };
+                    slots[index] = slot;
+                }
+            }
+            if (id) this.userAliases.set(alias, id);
+            if (slot && method === 'item/completed') slot.completed = true;
+            if (turnId) this.userSlots.set(turnId, slots);
             if (id) {
                 const firstInTurn = turnId ? [...this.turns].find(([, value]) => value === turnId)?.[0] : undefined;
                 if (turnId) this.turns.set(id, turnId);
                 await this.committed(id);
-                const text = inputText(item.content);
-                if (text) this.session.sendUserMessage(text, undefined, id);
+                if (text) this.session.sendUserMessage(text, undefined, id, ...(this.position === undefined ? [] : [this.position]));
                 this.session.updateMetadata(metadata => ({ ...metadata, conversationHistoryTurns: Object.fromEntries(this.turns),
                     ...(turnId && (!firstInTurn || firstInTurn === id) ? { conversationHistoryPoints: { ...metadata.conversationHistoryPoints, [id]: true } } : {})
                 }));
@@ -202,13 +250,27 @@ export class SharedCodexProjection {
         }
         const titleRevision = this.titleRevision;
         let latestTitle: string | undefined;
+        let previousPosition = 0;
         for (const value of turns) {
             const turn = record(value);
             if (!Array.isArray(turn.items)) continue;
-            for (const item of turn.items) {
+            const nativeBase = typeof turn.startedAt === 'number' ? turn.startedAt * 1000
+                : typeof turn.id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-7/.test(turn.id)
+                    ? parseInt(turn.id.replaceAll('-', '').slice(0, 12), 16) : undefined;
+            const base = nativeBase === undefined ? undefined : Math.max(nativeBase, previousPosition);
+            if (base !== undefined) {
+                this.turnStarts.set(String(turn.id), base);
+                previousPosition = base + turn.items.length * 2;
+                this.lastPositions.set(String(turn.id), previousPosition);
+            }
+            this.itemCounts.set(String(turn.id), turn.items.length);
+            let userIndex = 0;
+            for (const [index, item] of turn.items.entries()) {
                 if (!this.parentThreadId && record(item).type === 'reasoning'
                     && this.excludedHistoryReasoning?.has(String(record(item).id))) continue;
-                const params = { threadId: this.threadId, turnId: turn.id, item };
+                const params = { threadId: this.threadId, turnId: turn.id, item,
+                    ...(base === undefined ? {} : { projectionAt: base + index * 2 }),
+                    ...(record(item).type === 'userMessage' ? { userIndex: userIndex++ } : {}) };
                 const titleKey = `${string(turn.id) ?? 'thread'}:${record(item).id}`;
                 const pendingTitle = requestedTitle(record(item));
                 if (!this.parentThreadId && string(record(item).id) && pendingTitle && !this.completedTitles.has(titleKey)) {
@@ -217,7 +279,8 @@ export class SharedCodexProjection {
                 await this.project('item/started', params);
                 // Active snapshots can contain partial assistant text. Do not
                 // settle it under the final stable id and suppress completion.
-                if (turn.status !== 'inProgress' || record(item).status === 'completed' || record(item).type === 'userMessage') {
+                if (turn.status !== 'inProgress' || record(item).status === 'completed' || record(item).type === 'userMessage'
+                    || (record(item).type === 'agentMessage' && index < turn.items.length - 1)) {
                     if (!this.parentThreadId) {
                         const title = successfulTitle(record(item));
                         if (title && string(record(item).id)) {

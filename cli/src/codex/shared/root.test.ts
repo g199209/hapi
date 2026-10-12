@@ -102,6 +102,18 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
     };
 }
 
+it('binds only full canonical history, ignoring the provisional resume item view', async () => {
+    const f = await fixture();
+    f.native.thread.turns = [{ id: 'turn', status: 'completed', items: [
+        { id: 'canonical', type: 'agentMessage', text: 'canonical history' }
+    ] }];
+    await f.root.bind('thread', { thread: { turns: [{ id: 'turn', status: 'completed', items: [
+        { id: 'item-1', type: 'agentMessage', text: 'provisional duplicate' }
+    ] }] } }, false);
+    expect(f.send.mock.calls.filter(([body]) => body.type === 'message').map(([body]) => body.message))
+        .toEqual(['canonical history']);
+});
+
 async function completePlan(f: Awaited<ReturnType<typeof fixture>>, status = 'completed') {
     await f.root.applySettings({ collaborationMode: 'plan' });
     const turn = { id: 'plan-turn', status: 'inProgress', items: [{ id: 'plan-item', type: 'plan', text: '# Implement me' }] };

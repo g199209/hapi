@@ -218,7 +218,9 @@ export class SharedCodexRoot {
         }));
         if (subscribe) response = record(await this.client.request('thread/resume', { threadId }));
         this.acceptSettings(response); this.acceptSettings(this.host.settingsFor(threadId) ?? {});
-        await this.projection.history(response.thread); await this.asyncQuestions.history(record(response.thread));
+        // Resume may return a provisional, truncated item view with item-N
+        // ids. Project only the full canonical history fetched by refresh.
+        // Live notifications remain subscribed while that read is in flight.
         await this.refresh(); await this.refreshChildren(true);
     }
     async activate(options: SharedLaunchOptions = {}): Promise<void> {

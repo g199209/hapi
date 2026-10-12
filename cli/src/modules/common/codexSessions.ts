@@ -38,6 +38,7 @@ export type LocalCodexSessionSummary = {
 
 export type LocalCodexSessionWithMessages = LocalCodexSessionSummary & {
     messages: CodexImportedMessageContent[]
+    sharedProjection?: boolean
 }
 
 export type ArchiveLocalCodexSessionOptions = {
@@ -373,7 +374,10 @@ function parseCodexLocalSession(
         threadSource,
         forkedFromId
     }
-    return includeMessages ? { ...summary, messages: deduplicateAdjacentImportedMessages(messages) } : summary
+    // runCodex always uses SharedCodexRoot, for both owned and external
+    // app-servers. JSONL is discovery/matching data; the V2 projection alone
+    // writes imported conversation history to the Hub.
+    return includeMessages ? { ...summary, messages: deduplicateAdjacentImportedMessages(messages), sharedProjection: true } : summary
 }
 
 function listLocalCodexSessions(includeMessages: false, limit?: number): LocalCodexSessionSummary[]

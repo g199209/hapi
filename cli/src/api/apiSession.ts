@@ -1103,7 +1103,7 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    sendUserMessage(text: string, meta?: MessageMeta, localId?: string): void {
+    sendUserMessage(text: string, meta?: MessageMeta, localId?: string, projectedAt?: number): void {
         if (!text) {
             return
         }
@@ -1124,9 +1124,10 @@ export class ApiSessionClient extends EventEmitter {
             this.socket.emit('message', {
                 sid: this.sessionId,
                 message: content,
-                localId
+                localId,
+                projectedAt
             })
-            if (localId) this.socket.emit('messages-consumed', { sid: this.sessionId, localIds: [localId] })
+            if (localId && projectedAt === undefined) this.socket.emit('messages-consumed', { sid: this.sessionId, localIds: [localId] })
         })
         this.notifyUserActivity()
     }
@@ -1139,7 +1140,7 @@ export class ApiSessionClient extends EventEmitter {
         void this.materialize()
     }
 
-    sendAgentMessage(body: unknown, localId?: string): void {
+    sendAgentMessage(body: unknown, localId?: string, projectedAt?: number): void {
         const content = {
             role: 'agent',
             content: {
@@ -1154,9 +1155,10 @@ export class ApiSessionClient extends EventEmitter {
             this.socket.emit('message', {
                 sid: this.sessionId,
                 message: content,
-                localId
+                localId,
+                projectedAt
             })
-            if (localId) this.socket.emit('messages-consumed', { sid: this.sessionId, localIds: [localId] })
+            if (localId && projectedAt === undefined) this.socket.emit('messages-consumed', { sid: this.sessionId, localIds: [localId] })
         })
     }
 
