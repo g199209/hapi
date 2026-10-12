@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
@@ -27,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Measurable
@@ -120,7 +126,7 @@ val LocalMarkdownLinkHandler = staticCompositionLocalOf<MarkdownLinkHandler> { N
  * monospace text.
  */
 @Composable
-fun Markdown(text: String, modifier: Modifier = Modifier, textStyle: TextStyle? = null) {
+fun Markdown(text: String, modifier: Modifier = Modifier, textStyle: TextStyle? = null, selectable: Boolean = false) {
     val cache = LocalMarkdownRenderCache.current
     val parsed = if (cache == null) {
         remember(text) { prepareDocument(text) }
@@ -133,11 +139,14 @@ fun Markdown(text: String, modifier: Modifier = Modifier, textStyle: TextStyle? 
         cache.cached(text) ?: prepared
     }
     val baseStyle = textStyle ?: MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp)
-    CompositionLocalProvider(LocalTextStyle provides baseStyle) {
-        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (parsed != null) MarkdownBlockChildren(parsed.document, parsed)
-            else Text(text)
+    CompositionLocalProvider(LocalTextStyle provides baseStyle, LocalMarkdownSelectable provides selectable) {
+        val body: @Composable () -> Unit = {
+            Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (parsed != null) MarkdownBlockChildren(parsed.document, parsed)
+                else Text(text)
+            }
         }
+        if (selectable) SelectionContainer { body() } else body()
     }
 }
 
@@ -176,6 +185,18 @@ internal fun prepareDocument(text: String): ParsedMarkdown {
     return ParsedMarkdown(document, markers)
 }
 
+/** A logical newline separates AST blocks in copied rendered text. */
+@Composable
+private fun selectionSuffix(node: Node): String {
+    if (!LocalMarkdownSelectable.current) return ""
+    var cursor: Node? = node
+    while (cursor != null) {
+        if (cursor.next != null) return "\n"
+        cursor = cursor.parent
+    }
+    return ""
+}
+
 // ── Block rendering ──────────────────────────────────────────────────────────
 
 @Composable
@@ -198,11 +219,12 @@ private fun MarkdownBlock(node: Node, parsed: ParsedMarkdown) {
         is FencedCodeBlock -> CodeBlock(
             code = node.literal.orEmpty().trimEnd('\n'),
             language = node.info?.trim()?.takeWhile { !it.isWhitespace() }?.ifEmpty { null },
+            selectionSuffix = selectionSuffix(node),
         )
-        is IndentedCodeBlock -> CodeBlock(code = node.literal.orEmpty().trimEnd('\n'), language = null)
+        is IndentedCodeBlock -> CodeBlock(code = node.literal.orEmpty().trimEnd('\n'), language = null, selectionSuffix = selectionSuffix(node))
         is TableBlock -> MarkdownTable(node)
         is ThematicBreak -> HorizontalDivider(color = MaterialTheme.hapi.divider)
-        is HtmlBlock -> HtmlBlockFallback(node.literal.orEmpty())
+        is HtmlBlock -> HtmlBlockFallback(node.literal.orEmpty(), selectionSuffix(node))
         else -> if (node.firstChild != null) MarkdownBlockChildren(node, parsed)
     }
 }
@@ -271,8 +293,9 @@ private fun MarkdownList(list: Node, ordered: Boolean, parsed: ParsedMarkdown) {
 @Composable
 private fun MarkdownListItem(item: ListItem, marker: String, parsed: ParsedMarkdown) {
     Row {
-        Text(
-            text = marker,
+        MarkdownSelectionText(
+            text = AnnotatedString(marker),
+            suffix = if (LocalMarkdownSelectable.current) " " else "",
             style = LocalTextStyle.current,
             color = MaterialTheme.hapi.hint,
             modifier = Modifier
@@ -286,9 +309,10 @@ private fun MarkdownListItem(item: ListItem, marker: String, parsed: ParsedMarkd
 }
 
 @Composable
-private fun HtmlBlockFallback(literal: String) {
-    Text(
-        text = literal.trimEnd('\n'),
+private fun HtmlBlockFallback(literal: String, suffix: String) {
+    MarkdownSelectionText(
+        text = AnnotatedString(literal.trimEnd('\n')),
+        suffix = suffix,
         style = LocalTextStyle.current.copy(
             fontFamily = FontFamily.Monospace,
             fontSize = 14.sp,
@@ -373,6 +397,8 @@ private fun TableGrid(rows: List<TableRowModel>, columnCount: Int, colors: HapiE
                         MarkdownInlineText(
                             cell,
                             style = if (row.isHeader) cellStyle.copy(fontWeight = FontWeight.SemiBold) else cellStyle,
+                            suffix = if (!LocalMarkdownSelectable.current) "" else if (c < row.cells.lastIndex) " "
+                                else if (r < rows.lastIndex || selectionSuffix(cell).isNotEmpty()) "\n" else "",
                             textAlign = when (alignment) {
                                 TableCell.Alignment.CENTER -> TextAlign.Center
                                 TableCell.Alignment.RIGHT -> TextAlign.End
@@ -445,19 +471,50 @@ private fun MarkdownInlineText(
     parent: Node,
     style: TextStyle = LocalTextStyle.current,
     textAlign: TextAlign? = null,
+    suffix: String = selectionSuffix(parent),
 ) {
     val handler = LocalMarkdownLinkHandler.current
     val colors = MaterialTheme.hapi
-    val annotated = remember(parent, colors, handler) {
-        buildAnnotatedString {
-            appendInlineChildren(parent, InlineContext(colors, handler), insideLink = false)
+    val press = remember { LinkPress() }
+    val selectable = LocalMarkdownSelectable.current
+    val guardedHandler = remember(handler, selectable) {
+        object : MarkdownLinkHandler {
+            private fun open(action: () -> Unit) {
+                val suppressed = selectable && press.wasLongPress
+                press.wasLongPress = false
+                if (!suppressed) action()
+            }
+            override fun onFilePath(path: String, line: Int?) = open { handler.onFilePath(path, line) }
+            override fun onUrl(url: String, decision: HrefDecision) = open { handler.onUrl(url, decision) }
         }
     }
-    Text(
+    val annotated = remember(parent, colors, guardedHandler) {
+        buildAnnotatedString {
+            appendInlineChildren(parent, InlineContext(colors, guardedHandler), insideLink = false)
+        }
+    }
+    MarkdownSelectionText(
         text = annotated,
+        suffix = suffix,
+        modifier = if (!selectable || annotated.getLinkAnnotations(0, annotated.length).isEmpty()) Modifier else Modifier.pointerInput(press) {
+            // Observe before the link's click handler. Leave events untouched so
+            // the surrounding SelectionContainer owns long presses and drags.
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                press.wasLongPress = false
+                do {
+                    val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                    if (change.changedToUpIgnoreConsumed()) {
+                        press.wasLongPress = change.uptimeMillis - down.uptimeMillis >= viewConfiguration.longPressTimeoutMillis
+                    }
+                } while (change.pressed)
+            }
+        },
         style = if (textAlign != null) style.copy(textAlign = textAlign) else style,
     )
 }
+
+private class LinkPress { var wasLongPress = false }
 
 private class InlineContext(val colors: HapiExtendedColors, val handler: MarkdownLinkHandler) {
     val linkStyles = TextLinkStyles(

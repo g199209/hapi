@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,7 +78,7 @@ private object HighlightCache {
  * [MAX_HIGHLIGHT_LINES] lines) and unknown languages stay plain.
  */
 @Composable
-fun CodeBlock(code: String, language: String?, modifier: Modifier = Modifier) {
+fun CodeBlock(code: String, language: String?, modifier: Modifier = Modifier, selectionSuffix: String = "") {
     val colors = MaterialTheme.hapi
 
     Column(
@@ -84,27 +86,29 @@ fun CodeBlock(code: String, language: String?, modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(12.dp))
             .background(colors.codeBackground),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.codeHeaderBackground)
-                .padding(start = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = (language ?: stringResource(R.string.code_plain_fallback)).uppercase(),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 0.8.sp,
-                color = colors.codeHeaderForeground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                // Fill the remainder so short labels cannot pull the action
-                // away from the trailing edge (weight(fill = false) did).
-                modifier = Modifier.weight(1f),
-            )
-            FullTextAction(code, compact = true)
+        DisableSelection {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.codeHeaderBackground)
+                    .padding(start = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = (language ?: stringResource(R.string.code_plain_fallback)).uppercase(),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    letterSpacing = 0.8.sp,
+                    color = colors.codeHeaderForeground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Fill the remainder so short labels cannot pull the action
+                    // away from the trailing edge (weight(fill = false) did).
+                    modifier = Modifier.weight(1f),
+                )
+                FullTextAction(code, compact = true)
+            }
         }
         val highlighted = rememberHighlightedCode(code, language, colors.isDark)
         Box(
@@ -112,11 +116,12 @@ fun CodeBlock(code: String, language: String?, modifier: Modifier = Modifier) {
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
         ) {
-            Text(
+            MarkdownSelectionText(
                 text = highlighted,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
+                suffix = selectionSuffix,
+                style = LocalTextStyle.current.copy(
+                    fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 20.sp,
+                ),
                 softWrap = false,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             )

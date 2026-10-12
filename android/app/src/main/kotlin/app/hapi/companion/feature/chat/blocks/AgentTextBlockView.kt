@@ -40,7 +40,7 @@ import app.hapi.protocol.chat.reasoningPreview
 /** Assistant prose: full-width markdown (the shared M2d1 renderer). */
 @Composable
 fun AgentTextBlockView(block: AgentTextBlock, modifier: Modifier = Modifier) {
-    Markdown(text = block.text, modifier = modifier.fillMaxWidth())
+    Markdown(text = block.text, modifier = modifier.fillMaxWidth(), selectable = true)
 }
 
 /**
@@ -80,6 +80,7 @@ fun AgentReasoningBlockView(block: AgentReasoningBlock, modifier: Modifier = Mod
                     Markdown(
                         text = block.text,
                         modifier = Modifier.padding(14.dp),
+                        selectable = true,
                         textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 20.sp),
                     )
                 }
