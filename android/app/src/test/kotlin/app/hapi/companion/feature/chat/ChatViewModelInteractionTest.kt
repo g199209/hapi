@@ -26,6 +26,8 @@ import app.hapi.protocol.wire.AgentState
 import app.hapi.protocol.wire.AgentStateRequest
 import app.hapi.protocol.wire.ApprovePermissionRequest
 import app.hapi.protocol.wire.CancelMessageResponse
+import app.hapi.protocol.chat.AgentTextBlock
+import app.hapi.protocol.chat.UserTextBlock
 import app.hapi.protocol.chat.NormalizedMessage
 import app.hapi.protocol.chat.normalizeDecryptedMessage
 import app.hapi.protocol.wire.CodexModelsResponse
@@ -175,11 +177,21 @@ private class RecordingChatApi : ChatSessionApi {
     val configCalls = MutableStateFlow<List<String>>(emptyList())
     var configFailure: Exception? = null
 
+    val messageReads = mutableListOf<MessagesQuery>()
+    var serverMessages: List<DecryptedMessage> = emptyList()
+    var messageReadFailure = false
+
     var codexModelsResult: CodexModelsResponse = CodexModelsResponse(success = false, error = "not scripted")
 
-    override suspend fun getMessages(sessionId: String, query: MessagesQuery): MessagesResponse =
-        MessagesResponse(
-            messages = emptyList(),
+    override suspend fun getMessages(sessionId: String, query: MessagesQuery): MessagesResponse {
+        messageReads += query
+        if (messageReadFailure) error("offline")
+        val rows = when (query) {
+            is MessagesQuery.After -> serverMessages.filter { it.positionAt > query.afterAt || (it.positionAt == query.afterAt && (it.seq ?: 0) > query.afterSeq) }
+            else -> serverMessages
+        }
+        return MessagesResponse(
+            messages = rows,
             page = MessagesPage(
                 // Direction must match the query: a "latest" answer to an
                 // after-query means reset and would wipe ingested rows.
@@ -192,8 +204,11 @@ private class RecordingChatApi : ChatSessionApi {
                 epoch = 1,
                 reset = false,
                 hasMore = false,
+                snapshotHeadAt = serverMessages.maxOfOrNull { it.positionAt },
+                snapshotHeadSeq = serverMessages.lastOrNull()?.seq,
             ),
         )
+    }
 
     override suspend fun getQueuedState(sessionId: String, localIds: List<String>): QueuedStateResponse =
         QueuedStateResponse(queuedLocalIds = localIds, invokedLocalMessages = emptyList())
@@ -448,6 +463,7 @@ private class InteractionHarness(
 
 // ------------------------------------------------------------------ tests --
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ChatViewModelInteractionTest {
 
     private fun planDetail(): Session = detail(
@@ -572,6 +588,157 @@ class ChatViewModelInteractionTest {
     }
 
     // ---------------------------------------------------------------- send --
+
+    private fun acceptedUser(invoked: Boolean = true) = DecryptedMessage(
+        id = "server-user", seq = 1, localId = "local-1", createdAt = 1_000,
+        invokedAt = OptionalField.Present(if (invoked) 1_100L else null),
+        content = buildJsonObject {
+            put("role", "user")
+            putJsonObject("content") { put("type", "text"); put("text", "hello agent") }
+        },
+    )
+
+    private fun reply(text: String = "Reply arrived") = DecryptedMessage(
+        id = "server-reply", seq = 2, createdAt = 1_200,
+        invokedAt = OptionalField.Present(1_200L),
+        content = buildJsonObject {
+            put("role", "agent")
+            putJsonObject("content") {
+                put("type", "codex")
+                putJsonObject("data") { put("type", "message"); put("message", text) }
+            }
+        },
+    )
+
+    private suspend fun InteractionHarness.sendFirst() {
+        viewModel.start()
+        window().state.first { it.syncGeneration >= 2 && !it.isSyncingTail }
+        viewModel.setComposerText("hello agent")
+        viewModel.sendMessage()
+        window().state.first { it.messages.any { row -> row.localId == "local-1" && row.status != MessageStatus.Sending } }
+    }
+
+    @Test
+    fun `accepted first send recovers missed echo consume and reply without reentering or resending`() = runTest {
+        val h = InteractionHarness(this, detail(thinking = true))
+        h.sendFirst()
+        assertTrue(h.viewModel.uiState.value.blocks.isEmpty())
+        h.viewModel.queuedRows.first { it.isNotEmpty() }
+        h.api.serverMessages = listOf(acceptedUser(), reply())
+        testScheduler.advanceTimeBy(2_001)
+        testScheduler.runCurrent()
+        testScheduler.advanceTimeBy(200)
+        testScheduler.runCurrent()
+        assertTrue(h.viewModel.uiState.value.blocks.filterIsInstance<AgentTextBlock>().any { it.text == "Reply arrived" })
+        assertTrue(h.viewModel.queuedRows.value.isEmpty())
+        assertTrue(h.viewModel.uiState.value.blocks.any { it is UserTextBlock })
+        assertEquals(1, h.api.sendCalls.value.size)
+        h.sessionStore.setDetail(detail(thinking = false))
+        testScheduler.advanceTimeBy(4_001)
+        testScheduler.runCurrent()
+        val settledReads = h.api.messageReads.size
+        testScheduler.advanceTimeBy(20_000)
+        testScheduler.runCurrent()
+        assertEquals(settledReads, h.api.messageReads.size, "idle confirmed turns stop recovery")
+    }
+
+    @Test
+    fun `recovery preserves a genuinely queued send then fetches a later reply with backoff`() = runTest {
+        val h = InteractionHarness(this, detail(thinking = true))
+        h.sendFirst()
+        h.api.serverMessages = listOf(acceptedUser(invoked = false))
+        testScheduler.advanceTimeBy(2_001)
+        testScheduler.runCurrent()
+        assertEquals(1, h.viewModel.queuedRows.value.size)
+        h.api.serverMessages = listOf(acceptedUser())
+        testScheduler.advanceTimeBy(4_001)
+        testScheduler.runCurrent()
+        assertTrue(h.viewModel.queuedRows.value.isEmpty())
+        h.api.serverMessages = listOf(acceptedUser(), reply("Delayed reply"))
+        testScheduler.advanceTimeBy(8_001)
+        testScheduler.runCurrent()
+        testScheduler.advanceTimeBy(200)
+        testScheduler.runCurrent()
+        assertTrue(h.viewModel.uiState.value.blocks.filterIsInstance<AgentTextBlock>().any { it.text == "Delayed reply" })
+        assertEquals(1, h.api.sendCalls.value.size)
+    }
+
+    @Test
+    fun `healthy message SSE resets silence deadline without extra message reads`() = runTest {
+        val h = InteractionHarness(this, detail(thinking = true))
+        h.sendFirst()
+        val reads = h.api.messageReads.size
+        val window = h.window()
+        repeat(5) { i ->
+            testScheduler.advanceTimeBy(1_000)
+            window.onMessageEvent(SyncEvent.MessageReceived(sessionId = IX_SESSION, message = reply("stream $i")))
+            testScheduler.runCurrent()
+        }
+        assertEquals(reads, h.api.messageReads.size)
+        assertEquals(1, h.api.sendCalls.value.size)
+    }
+
+    @Test
+    fun `send recovery pauses for inspection background and history then stops on exit`() = runTest {
+        val h = InteractionHarness(this, detail(thinking = true))
+        h.sendFirst()
+        val reads = h.api.messageReads.size
+        h.viewModel.setTranscriptVisible(false)
+        testScheduler.advanceTimeBy(20_000)
+        testScheduler.runCurrent()
+        assertEquals(reads, h.api.messageReads.size)
+        h.engine.setLifecycleForeground(false)
+        h.viewModel.setTranscriptVisible(true)
+        testScheduler.advanceTimeBy(20_000)
+        testScheduler.runCurrent()
+        assertEquals(reads, h.api.messageReads.size)
+        h.viewModel.readingViewportChanged(followsTail = false, needsOlder = false)
+        h.engine.setLifecycleForeground(true)
+        testScheduler.advanceTimeBy(20_000)
+        testScheduler.runCurrent()
+        assertEquals(reads, h.api.messageReads.size)
+        h.api.serverMessages = listOf(acceptedUser(), reply())
+        h.viewModel.readingViewportChanged(followsTail = true, needsOlder = false)
+        testScheduler.advanceTimeBy(2_001)
+        testScheduler.runCurrent()
+        assertTrue(h.api.messageReads.size > reads)
+        h.viewModel.stop()
+        val stoppedReads = h.api.messageReads.size
+        testScheduler.advanceTimeBy(20_000)
+        testScheduler.runCurrent()
+        assertEquals(stoppedReads, h.api.messageReads.size)
+    }
+
+    @Test
+    fun `send recovery retries read failures without transmitting the input again`() = runTest {
+        val h = InteractionHarness(this, detail(thinking = true))
+        h.sendFirst()
+        h.api.messageReadFailure = true
+        testScheduler.advanceTimeBy(2_001)
+        testScheduler.runCurrent()
+        assertEquals(1, h.viewModel.queuedRows.value.size)
+        h.api.messageReadFailure = false
+        h.api.serverMessages = listOf(acceptedUser(), reply())
+        testScheduler.advanceTimeBy(4_001)
+        testScheduler.runCurrent()
+        testScheduler.advanceTimeBy(200)
+        testScheduler.runCurrent()
+        assertTrue(h.viewModel.uiState.value.blocks.filterIsInstance<AgentTextBlock>().any { it.text == "Reply arrived" })
+        assertEquals(1, h.api.sendCalls.value.size)
+    }
+
+    @Test
+    fun `failed posts do not start accepted send recovery`() = runTest {
+        val h = InteractionHarness(this)
+        h.api.sendFailures += RuntimeException("offline")
+        h.sendFirst()
+        val reads = h.api.messageReads.size
+        testScheduler.advanceTimeBy(20_000)
+        testScheduler.runCurrent()
+        assertEquals(reads, h.api.messageReads.size)
+        assertEquals(1, h.api.sendCalls.value.size)
+        assertEquals(MessageStatus.Failed, h.window().state.value.messages.single().status)
+    }
 
     @Test
     fun `optimistic send happy path posts queue delivery and settles to sent`() = runTest {

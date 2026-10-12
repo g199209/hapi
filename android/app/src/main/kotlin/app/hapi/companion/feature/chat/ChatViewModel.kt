@@ -14,6 +14,7 @@ import app.hapi.companion.feature.sessions.SessionListViewModel
 import app.hapi.companion.feature.sessions.formatReopenError
 import app.hapi.data.api.ApiError
 import app.hapi.data.api.ChatSessionApi
+import app.hapi.data.sse.ConnectionState
 import app.hapi.data.sse.SseEngine
 import app.hapi.data.sse.SseSubscriptionKey
 import app.hapi.data.sse.SyncEventRouter
@@ -67,6 +68,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -374,6 +377,9 @@ class ChatViewModel(
     private var historyDemand = false
     private var readerFollowsTail = true
     private var transcriptVisible = true
+    private val sendRecoveryVisible = MutableStateFlow(true)
+    private val sendRecoveryFollowing = MutableStateFlow(true)
+    private var sendRecoveryJob: Job? = null
     internal val inspection = ChatInspectionState()
     private val transcriptProjection = TranscriptProjection()
     val reconnecting: StateFlow<Boolean> = sseEngine.reconnecting(subscriptionKey)
@@ -382,6 +388,7 @@ class ChatViewModel(
     @MainThread
     internal fun setTranscriptVisible(visible: Boolean) {
         transcriptVisible = visible
+        sendRecoveryVisible.value = visible
         if (!visible) {
             historyDemand = false
             cancelHistory()
@@ -638,6 +645,8 @@ class ChatViewModel(
         started = false
         historyObserver?.cancel()
         historyObserver = null
+        sendRecoveryJob?.cancel()
+        sendRecoveryJob = null
         sseJob?.cancel()
         sseJob = null
         initJob?.cancel()
@@ -691,6 +700,7 @@ class ChatViewModel(
         if (!transcriptVisible) return
         val changed = readerFollowsTail != followsTail
         readerFollowsTail = followsTail
+        sendRecoveryFollowing.value = followsTail
         historyDemand = needsOlder
         val store = windowStore.value
         if (changed && !mutableJumpingLatest.value && store != null) {
@@ -1054,6 +1064,7 @@ class ChatViewModel(
             try {
                 api.sendMessage(sessionId, request)
                 store.updateStatus(localId, successStatus())
+                recoverAcceptedSend(store)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -1065,6 +1076,65 @@ class ChatViewModel(
             }
         } finally {
             sendInFlight.value = false
+        }
+    }
+
+    /**
+     * A successful POST proves acceptance, not that this page received its SSE
+     * echo/consume/reply frames. Re-entering used to be the only recovery for
+     * missed frames on an otherwise connected stream. Reconcile after silence
+     * while a send/turn is pending, without ever transmitting the input again.
+     */
+    private fun recoverAcceptedSend(store: MessageWindowStore) {
+        uiScope.launch {
+            sendRecoveryJob?.cancel()
+            sendRecoveryJob = uiScope.launch {
+                val available = combine(
+                    sendRecoveryVisible, sendRecoveryFollowing,
+                    sseEngine.connectionState(subscriptionKey),
+                ) { visible, following, connection ->
+                    visible && following && connection.phase != ConnectionState.Phase.Suspended
+                }
+                var waitMs = 2_000L
+                while (isActive && started) {
+                    available.first { it }
+                    val revision = store.liveRevision.value
+                    val interrupted = withTimeoutOrNull(waitMs) {
+                        combine(store.liveRevision, available) { current, enabled ->
+                            current != revision || !enabled
+                        }.first { it }
+                    }
+                    if (interrupted != null) {
+                        waitMs = 2_000L
+                        continue
+                    }
+                    val before = store.state.value.messagesVersion
+                    var reconciled = false
+                    try {
+                        withContext(workerContext) { store.reconcileQueuedState() }
+                        reconciled = store.state.value.warning == null
+                        if (reconciled && store.state.value.messagesVersion != before && store.liveRevision.value == revision) {
+                            // REST found data the live pipe failed to deliver.
+                            // Repair that pipe as well as showing the fetched rows.
+                            if (sseEngine.connectionState(subscriptionKey).value.phase == ConnectionState.Phase.Idle) {
+                                sseEngine.subscribe(subscriptionKey)
+                            } else {
+                                sseEngine.requestReconnect(subscriptionKey)
+                            }
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Exception) {
+                        // Keep the real queued state during an outage. Tail-sync
+                        // failures use the store's existing warning/retry UI.
+                    }
+                    // Include one final read after the turn becomes idle, so a
+                    // missed completion frame cannot leave the last reply hidden.
+                    if (reconciled && !currentSessionState().thinking && store.queuedReconcileCandidateLocalIds().isEmpty()) return@launch
+                    waitMs = if (store.liveRevision.value != revision) 2_000L
+                        else (waitMs * 2).coerceAtMost(15_000L)
+                }
+            }
         }
     }
 
@@ -1115,6 +1185,7 @@ class ChatViewModel(
         try {
             api.sendMessage(targetSessionId, request)
             targetStore.updateStatus(localId, successStatus())
+            if (targetSessionId == sessionId) recoverAcceptedSend(targetStore)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {

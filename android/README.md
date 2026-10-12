@@ -345,6 +345,23 @@ freezes tail following, cancels hidden history loading and recording, and hides
 the keyboard. Returning retains the transcript anchor. Trimmed selections remain
 readable as labeled snapshots; an epoch reset closes obsolete inspectors.
 
+## Accepted-send recovery
+
+After a successful send, the visible conversation reconciles its message tail
+and queued state if session message SSE frames remain silent for two seconds.
+Continued silence backs off through 4, 8 and 15 seconds; live message frames
+reset the timer. If REST finds messages the live pipe missed, the client
+reconnects that pipe. Completion performs a final read and stops recovery.
+Recovery pauses in background, inspectors and history reading, and is cancelled
+on chat exit. It only reads server state; it never re-submits the input.
+
+`AcceptedSendLiveTest` is an opt-in live check. Supply an empty isolated session
+with `-e recoverySessionId <id>` and `-e expectRecovery true` to the instrument
+runner. It withholds that session's message frames inside the emulator process
+while keeping REST, handshakes and metadata live, then verifies in-page reply
+recovery and exactly one accepted user row. `expectRecovery false` validates
+baseline behavior against an older Debug APK. It skips without a session ID.
+
 ## Long messages and reading layout
 
 User bubbles render selectable Markdown (links, emphasis, lists and code),

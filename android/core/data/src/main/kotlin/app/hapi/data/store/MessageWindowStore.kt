@@ -77,6 +77,12 @@ class MessageWindowStore(
     /** The full window state (UI projects what it needs; see [uiState]). */
     val state: StateFlow<MessageWindowState> = _state.asStateFlow()
 
+    // Only successfully applied session SSE frames advance this signal.
+    // REST reconciliation must not reset its own silence/backoff timer.
+    private val _liveRevision = MutableStateFlow(0L)
+    val liveRevision: StateFlow<Long> = _liveRevision.asStateFlow()
+
+
     /**
      * UI-facing projection — the fields the web `useMessages` hook returns;
      * cursor/generation internals stay off the render path.
@@ -432,8 +438,9 @@ class MessageWindowStore(
                 scope.launch { syncTail() }
             }
             is SyncEvent.ScheduledMatured -> scope.launch { syncTail(ensureAfterCurrent = true) }
-            else -> Unit
+            else -> return
         }
+        _liveRevision.value += 1
     }
 
     /** SSE `message-received` ingest (web `ingestIncomingMessages`). */
