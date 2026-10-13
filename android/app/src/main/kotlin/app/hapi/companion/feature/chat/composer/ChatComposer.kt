@@ -17,6 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -80,7 +85,9 @@ import kotlinx.coroutines.delay
 @Composable
 fun ChatComposer(
     state: ComposerUiState,
-    onTextChange: (String) -> Unit,
+    editor: TextFieldState,
+    /** Observe edits for drafts/derived controls; never feed text back into the editor. */
+    onTextChange: () -> Unit,
     onSend: () -> Unit,
     onSendSteer: () -> Unit,
     onAbort: () -> Unit,
@@ -96,6 +103,10 @@ fun ChatComposer(
     onDictationToggle: () -> Unit = {},
     onDictationCancel: () -> Unit = {},
 ) {
+    val notifyTextChange by rememberUpdatedState(onTextChange)
+    LaunchedEffect(editor) {
+        snapshotFlow { editor.text.toString() }.collect { notifyTextChange() }
+    }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     // Do not replay an old focus intent when returning from an inspector.
@@ -150,21 +161,20 @@ fun ChatComposer(
                         )
                     }
                     BasicTextField(
-                        value = state.text,
-                        onValueChange = onTextChange,
+                        state = editor,
                         textStyle = app.hapi.companion.ui.theme.HapiTypography.body.copy(
                             color = MaterialTheme.colorScheme.onSurface,
                         ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        maxLines = 6,
+                        lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
                         modifier = Modifier
                             .focusRequester(focusRequester)
                             .testTag("chat-composer-input")
                             .fillMaxWidth()
                             .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-                        decorationBox = { inner ->
+                        decorator = { inner ->
                             Box {
-                                if (state.text.isEmpty()) {
+                                if (editor.text.isEmpty()) {
                                     Text(
                                         text = stringResource(R.string.chat_composer_placeholder),
                                         style = MaterialTheme.typography.bodyLarge,
@@ -198,7 +208,7 @@ fun ChatComposer(
                             MicButton(state = dictation, onToggle = onDictationToggle)
                         }
                         PrimaryActionButton(
-                            state = state,
+                            state = state.copy(text = editor.text.toString()),
                             attachments = attachments,
                             onSend = onSend,
                             onSendSteer = onSendSteer,
@@ -587,11 +597,13 @@ private fun ChatComposerPreview() {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChatComposer(
                     state = ComposerUiState(text = "", isSending = false, canSteer = false),
+                    editor = rememberTextFieldState(""),
                     onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                     dictation = DictationState.Idle,
                 )
                 ChatComposer(
                     state = ComposerUiState(text = "", isSending = false, canSteer = true),
+                    editor = rememberTextFieldState(""),
                     onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                     onAddAttachment = {},
                     dictation = DictationState.Idle,
@@ -602,11 +614,13 @@ private fun ChatComposerPreview() {
                         isSending = false,
                         canSteer = true,
                     ),
+                    editor = rememberTextFieldState("Run the tests and summarize failures\nThen propose the smallest safe fix."),
                     onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                     dictation = DictationState.Idle,
                 )
                 ChatComposer(
                     state = ComposerUiState(text = "Sending…", isSending = true, canSteer = false),
+                    editor = rememberTextFieldState("Sending…"),
                     onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                     onAddAttachment = {},
                     attachments = listOf(
@@ -632,6 +646,7 @@ private fun AttachmentChipsComposerPreview() {
         Surface {
             ChatComposer(
                 state = ComposerUiState(text = "", isSending = false, canSteer = true),
+                editor = rememberTextFieldState(""),
                 onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                 onAddAttachment = {},
                 attachments = listOf(
@@ -672,6 +687,7 @@ private fun RecordingComposerPreview() {
         Surface {
             ChatComposer(
                 state = ComposerUiState(text = "", isSending = false, canSteer = false),
+                editor = rememberTextFieldState(""),
                 onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                 dictation = DictationState.Recording(startedAtMs = System.currentTimeMillis() - 42_000),
             )
@@ -686,6 +702,7 @@ private fun SlashDropdownComposerPreview() {
         Surface {
             ChatComposer(
                 state = ComposerUiState(text = "/co", isSending = false, canSteer = false),
+                editor = rememberTextFieldState("/co"),
                 onTextChange = {}, onSend = {}, onSendSteer = {}, onAbort = {},
                 dictation = DictationState.Idle,
                 slashSuggestions = listOf(

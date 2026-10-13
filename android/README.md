@@ -24,6 +24,11 @@ differences, pairing and features currently available through the web.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Slash suggestions combine session
   metadata and the slash-command RPC; the skills `$` picker has no UI.
+- Composer editing uses a holder-owned `TextFieldState`: IME text, selection and
+  composition update synchronously. Derived toolbar/draft flows never write text
+  back to the field; send and exit read the editing buffer directly. Native
+  `ComposerImeTest` covers candidate commits, composing regions, middle edits,
+  explicit clear/prefill and screen recreation with delayed derived state.
 - **Dictation:** provider discovery on chat entry picks the first
   `standard`-capable provider. The microphone stays hidden until one is
   available. First use requests `RECORD_AUDIO`; `MediaRecorder` records

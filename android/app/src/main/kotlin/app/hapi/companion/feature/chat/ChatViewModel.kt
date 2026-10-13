@@ -1,6 +1,8 @@
 package app.hapi.companion.feature.chat
 
 import androidx.annotation.MainThread
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import app.hapi.companion.feature.chat.attachments.ComposerAttachments
 import app.hapi.companion.feature.chat.blocks.planProposalMarkdown
 import app.hapi.companion.feature.chat.composer.ChatDrafts
@@ -344,7 +346,7 @@ class ChatViewModel(
     /** Web `makeClientSideId('local')` twin; injectable for deterministic tests. */
     private val localIdGenerator: () -> String = { "local-${UUID.randomUUID()}" },
     /** Serialized UI event loop; JVM tests inject their UI dispatcher. */
-    uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) {
     // The holder's scope is a Default worker scope, NOT the coordinator's
     // executor. Share its lifetime, but serialize all history/lifecycle state
@@ -412,6 +414,9 @@ class ChatViewModel(
 
     // ------------------------------------------------------------ M3 state --
 
+    /** Authoritative editing buffer: IME writes synchronously, including selection/composition. */
+    val composerEditor = TextFieldState()
+    /** Derived text for toolbar/slash flows and persistence, never fed back to BasicTextField. */
     private val composerText = MutableStateFlow("")
     private val sendInFlight = MutableStateFlow(false)
 
@@ -668,11 +673,12 @@ class ChatViewModel(
      */
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     private fun flushPendingDraft() {
-        val pending = draftJob?.isActive == true
+        val text = composerEditor.text.toString()
+        // A screen can close before snapshotFlow observes the last IME edit.
+        val pending = draftJob?.isActive == true || text != composerText.value
         draftJob?.cancel()
         if (!pending) return
         val store = drafts ?: return
-        val text = composerText.value
         kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             runCatching { store.save(sessionId, text) }
         }
@@ -842,7 +848,17 @@ class ChatViewModel(
 
     // ------------------------------------------------------------- composer --
 
+    @MainThread
     fun setComposerText(text: String) {
+        if (composerEditor.text.toString() != text) composerEditor.setTextAndPlaceCursorAtEnd(text)
+        onComposerEdited()
+    }
+
+    /** Notification only: always read the current editor, even if observation was delayed. */
+    @MainThread
+    fun onComposerEdited() {
+        val text = composerEditor.text.toString()
+        if (composerText.value == text) return
         // Fetch the RPC command list on the transition INTO slash mode (the
         // web refetches when the menu opens) — not on every keystroke, so a
         // wedged CLI cannot be hammered while the user types a command.
@@ -860,7 +876,7 @@ class ChatViewModel(
 
     /** Dictation transcript arrived: append with a space separator (web `appendTranscript`). */
     fun appendDictatedText(transcript: String) {
-        setComposerText(appendTranscript(composerText.value, transcript))
+        setComposerText(appendTranscript(composerEditor.text.toString(), transcript))
     }
 
     /**
@@ -871,7 +887,7 @@ class ChatViewModel(
      */
     fun insertComposerText(text: String) {
         if (text.isBlank()) return
-        val current = composerText.value
+        val current = composerEditor.text.toString()
         setComposerText(if (current.isBlank()) text else "${current.trimEnd()}\n$text")
     }
 
@@ -883,14 +899,16 @@ class ChatViewModel(
      */
     fun parkComposerDraft() {
         val store = scratchlist ?: return
-        val text = composerText.value
+        val text = composerEditor.text.toString()
         if (text.isBlank()) return
         scope.launch {
             when (val result = store.createEntry(sessionId, text)) {
                 is ScratchlistCreateResult.Created -> {
                     // Clear only when the draft is still what we parked (the
                     // operator may have kept typing while the POST ran).
-                    if (composerText.value == text) setComposerText("")
+                    withContext(uiDispatcher) {
+                        if (composerEditor.text.toString() == text) setComposerText("")
+                    }
                     _events.tryEmit(ChatEvent.Notice(ChatNotice.DraftParked))
                 }
                 ScratchlistCreateResult.AtCap ->
@@ -943,10 +961,10 @@ class ChatViewModel(
             _events.tryEmit(ChatEvent.Notice(ChatNotice.AttachmentsUploading))
             return
         }
-        val text = composerText.value.trim()
+        val text = composerEditor.text.toString().trim()
         val attachmentMetadata = attachments.consume()
         if (text.isEmpty() && attachmentMetadata == null) return
-        composerText.value = ""
+        setComposerText("")
         draftJob?.cancel()
         sendInFlight.value = true
         scope.launch {
@@ -961,7 +979,9 @@ class ChatViewModel(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (error: Exception) {
-                        composerText.value = text
+                        withContext(uiDispatcher) {
+                            if (composerEditor.text.isEmpty()) setComposerText(text)
+                        }
                         _events.tryEmit(ChatEvent.Notice(ChatNotice.ReopenFailed(error.message)))
                     } finally { sendInFlight.value = false }
                     return@launch
@@ -1350,13 +1370,15 @@ class ChatViewModel(
             val row = store.state.value.messages.firstOrNull { it.id == messageId } ?: return@launch
             val preview = queuedPreview(row)
             val editText = preview.text.ifEmpty { preview.attachmentNames.joinToString(", ") }
-            val composerAtEdit = composerText.value
+            val composerAtEdit = composerEditor.text.toString()
             when (cancelQueuedInternal(messageId)) {
                 "cancelled" -> {
-                    if (composerText.value == composerAtEdit) {
-                        setComposerText(editText)
-                    } else {
-                        _events.tryEmit(ChatEvent.Notice(ChatNotice.QueuedEditKeptDraft))
+                    withContext(uiDispatcher) {
+                        if (composerEditor.text.toString() == composerAtEdit) {
+                            setComposerText(editText)
+                        } else {
+                            _events.tryEmit(ChatEvent.Notice(ChatNotice.QueuedEditKeptDraft))
+                        }
                     }
                 }
                 "invoked" -> _events.tryEmit(ChatEvent.Notice(ChatNotice.QueuedAlreadyDelivered))
@@ -1782,8 +1804,8 @@ class ChatViewModel(
     private suspend fun restoreDraft() {
         val store = drafts ?: return
         val draft = runCatching { store.load(sessionId) }.getOrNull() ?: return
-        if (composerText.value.isEmpty()) {
-            composerText.value = draft
+        withContext(uiDispatcher) {
+            if (composerEditor.text.isEmpty()) setComposerText(draft)
         }
     }
 

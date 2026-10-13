@@ -1274,6 +1274,44 @@ class ChatViewModelInteractionTest {
         assertEquals(listOf(null, "low", "medium", "high"), config.effortOptions?.map { it.value })
     }
 
+    @Test
+    fun `send reads the live IME editor before derived text catches up`() = runTest {
+        val h = InteractionHarness(this)
+        h.viewModel.start()
+        h.viewModel.composerEditor.edit { append("中文候选词") }
+        // No observer notification or scheduler advance before Send.
+        assertEquals("", h.viewModel.composer.value.text)
+        h.viewModel.sendMessage()
+        val request = h.api.sendCalls.first { it.isNotEmpty() }.single().second
+        assertEquals("中文候选词", request.text)
+        assertEquals("", h.viewModel.composerEditor.text.toString())
+        assertEquals(0, h.viewModel.composerEditor.selection.end)
+    }
+
+    @Test
+    fun `delayed edit observation reads the current editor and preserves selection`() = runTest {
+        val h = InteractionHarness(this)
+        h.viewModel.start()
+        h.viewModel.setComposerText("已有内容")
+        h.viewModel.composerEditor.edit {
+            selection = androidx.compose.ui.text.TextRange(2)
+            replace(2, 2, "中文")
+            selection = androidx.compose.ui.text.TextRange(4)
+        }
+        h.viewModel.onComposerEdited()
+        h.viewModel.composer.first { it.text == "已有中文内容" }
+        assertEquals(4, h.viewModel.composerEditor.selection.end)
+        // Re-publishing the same text must not reset selection to the end.
+        h.viewModel.setComposerText("已有中文内容")
+        assertEquals(4, h.viewModel.composerEditor.selection.end)
+        kotlinx.coroutines.delay(50)
+        assertEquals("已有中文内容", h.drafts.map[IX_SESSION])
+        h.viewModel.setComposerText("replacement")
+        h.viewModel.onComposerEdited()
+        assertEquals("replacement", h.viewModel.composerEditor.text.toString())
+        assertEquals(11, h.viewModel.composerEditor.selection.end)
+    }
+
     // --------------------------------------------------------------- misc --
 
     @Test
