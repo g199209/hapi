@@ -390,6 +390,8 @@ export class SharedCodexRoot {
     async applySettings(raw: unknown): Promise<{ applied: RuntimeSettings }> {
         const config = SettingsSchema.parse(raw);
         if (config.permissionMode === 'safe-yolo') throw new Error('safe-yolo is not a native shared permission mode; choose default, read-only, or yolo');
+        // Default leaves the native thread's permission settings unchanged.
+        if (config.permissionMode === 'default') delete config.permissionMode;
         if (Object.keys(config).length === 0) return { applied: this.settings };
         if (typeof config.modelReasoningEffort === 'string') config.modelReasoningEffort = parseReasoningEffortValue(config.modelReasoningEffort);
         if (config.modelReasoningEffort === null) {

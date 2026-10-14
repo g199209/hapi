@@ -19,7 +19,7 @@ describe('shared launch configuration', () => {
         }
         expect(externalAppServerEndpoint({ codexArgs: ['--', '--enable=literal-prompt'] })).toBe('unix:///tmp/desktop.sock');
     });
-    it.each(['default', 'read-only', 'yolo'] as const)('keeps explicit %s authoritative over native permission flags', permissionMode => {
+    it.each(['read-only', 'yolo'] as const)('keeps explicit %s authoritative over native permission flags', permissionMode => {
         for (const flags of [
             ['--yolo'], ['--dangerously-bypass-approvals-and-sandbox'], ['--full-auto'],
             ['-sdanger-full-access', '-aon-request'], ['--sandbox=read-only', '--ask-for-approval=untrusted'],
@@ -39,6 +39,19 @@ describe('shared launch configuration', () => {
                 '-c', `sandbox_mode=${JSON.stringify(sandbox)}`, '-c', 'approvals_reviewer="user"'
             ]);
         }
+    });
+    it('omits permission overrides for Default and preserves native launch configuration', () => {
+        const plain = sharedLaunchConfig({ permissionMode: 'default' }, '/tmp');
+        for (const field of ['approvalPolicy', 'approvalsReviewer', 'sandbox']) expect(plain.threadParams).not.toHaveProperty(field);
+        expect(plain.threadParams.config).toEqual({});
+        expect(plain.serverArgs).not.toContain('approval_policy="on-request"');
+        const native = sharedLaunchConfig({ permissionMode: 'default', codexArgs: ['-a', 'never', '-s', 'danger-full-access'] }, '/tmp');
+        expect(native.threadParams).toMatchObject({ approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        const layered = sharedLaunchConfig({ permissionMode: 'default', codexArgs: ['-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="never"'] }, '/tmp');
+        expect(layered.serverArgs).toContain('sandbox_mode="read-only"');
+        expect(layered.serverArgs).toContain('approval_policy="never"');
+        expect(layered.threadParams.config).not.toHaveProperty('sandbox_mode');
+        expect(layered.threadParams.config).not.toHaveProperty('approval_policy');
     });
     it('keeps unspecified settings inherited and explicit Standard distinct', () => {
         expect(sharedLaunchConfig({}, '/tmp').threadParams).not.toHaveProperty('serviceTier');

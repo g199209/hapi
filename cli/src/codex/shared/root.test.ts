@@ -114,6 +114,19 @@ it('binds only full canonical history, ignoring the provisional resume item view
         .toEqual(['canonical history']);
 });
 
+it('Default settings leave the current native permission policy unchanged', async () => {
+    const f = await fixture();
+    f.root.acceptSettings({ model: 'mock', approvalPolicy: 'never', sandboxPolicy: { type: 'dangerFullAccess' } });
+    const request = vi.spyOn(f.root.client, 'request');
+    expect((await f.root.applySettings({ permissionMode: 'default' })).applied.permissionMode).toBe('yolo');
+    expect(request).not.toHaveBeenCalled();
+    await f.root.applySettings({ permissionMode: 'default', model: 'changed' });
+    const params = request.mock.calls.find(([method]) => method === 'thread/settings/update')?.[1];
+    expect(params).toMatchObject({ model: 'changed' });
+    expect(params).not.toHaveProperty('approvalPolicy');
+    expect(params).not.toHaveProperty('sandboxPolicy');
+});
+
 async function completePlan(f: Awaited<ReturnType<typeof fixture>>, status = 'completed') {
     await f.root.applySettings({ collaborationMode: 'plan' });
     const turn = { id: 'plan-turn', status: 'inProgress', items: [{ id: 'plan-item', type: 'plan', text: '# Implement me' }] };

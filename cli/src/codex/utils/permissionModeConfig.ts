@@ -7,17 +7,14 @@ export type CodexPermissionModeConfig = {
     sandboxPolicy: SandboxPolicy;
 };
 
-export function resolveCodexPermissionModeConfig(mode: CodexPermissionMode): CodexPermissionModeConfig {
+export function resolveCodexPermissionModeConfig(mode: 'default'): undefined;
+export function resolveCodexPermissionModeConfig(mode: Exclude<CodexPermissionMode, 'default'>): CodexPermissionModeConfig;
+export function resolveCodexPermissionModeConfig(mode: CodexPermissionMode): CodexPermissionModeConfig | undefined;
+export function resolveCodexPermissionModeConfig(mode: CodexPermissionMode): CodexPermissionModeConfig | undefined {
     switch (mode) {
         case 'default':
-            return {
-                // Remote Codex sessions rely on HAPI's approval UI for sandbox escalation.
-                // `on-request` keeps workspace-write sandboxing while still surfacing a
-                // user-approvable elevation request when the model needs it.
-                approvalPolicy: 'on-request',
-                sandbox: 'workspace-write',
-                sandboxPolicy: { type: 'workspaceWrite' }
-            };
+            // Inherit the native config/current thread; Default is not a preset.
+            return undefined;
         case 'read-only':
             return {
                 approvalPolicy: 'never',

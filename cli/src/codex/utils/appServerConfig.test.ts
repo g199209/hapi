@@ -60,15 +60,15 @@ describe('appServerConfig', () => {
         });
     });
 
-    it('uses on-request approvals for default Codex threads', () => {
+    it('inherits native permissions for default Codex threads', () => {
         const params = buildThreadStartParams({
             cwd: '/workspace/project',
             mode: { permissionMode: 'default', collaborationMode: 'default' },
             mcpServers
         });
 
-        expect(params.sandbox).toBe('workspace-write');
-        expect(params.approvalPolicy).toBe('on-request');
+        expect(params).not.toHaveProperty('sandbox');
+        expect(params).not.toHaveProperty('approvalPolicy');
     });
 
     it('passes MCP per-tool approval config through thread config', () => {
@@ -690,5 +690,14 @@ describe('appServerConfig', () => {
         expect(buildUserInputFromMessage('please ask @alice to upgrade @types/node.')).toEqual([
             { type: 'text', text: 'please ask @alice to upgrade @types/node.' }
         ]);
+    });
+});
+
+
+describe('Default turn permissions', () => {
+    it('does not override approval or sandbox on subsequent turns', () => {
+        const params = buildTurnStartParams({ threadId: 'thread', message: 'hello', cwd: '/test', mode: { permissionMode: 'default', collaborationMode: 'default', model: 'mock' } });
+        expect(params).not.toHaveProperty('approvalPolicy');
+        expect(params).not.toHaveProperty('sandboxPolicy');
     });
 });

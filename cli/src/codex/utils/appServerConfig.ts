@@ -40,22 +40,22 @@ const MCP_ELICITATION_ONLY_APPROVAL_POLICY = {
     }
 } as const satisfies ApprovalPolicy;
 
-function resolveApprovalPolicy(mode: EnhancedMode): ApprovalPolicy {
+function resolveApprovalPolicy(mode: EnhancedMode): ApprovalPolicy | undefined {
     if (mode.permissionMode === 'yolo' || mode.permissionMode === 'read-only') {
         // Codex's `never` policy auto-declines MCP elicitations before app-server
         // can forward them. Keep command/sandbox prompts disabled for Yolo and
         // read-only while allowing auth and structured input to reach HAPI's UI.
         return MCP_ELICITATION_ONLY_APPROVAL_POLICY;
     }
-    return resolveCodexPermissionModeConfig(mode.permissionMode).approvalPolicy;
+    return resolveCodexPermissionModeConfig(mode.permissionMode)?.approvalPolicy;
 }
 
-function resolveSandbox(mode: EnhancedMode): SandboxMode {
-    return resolveCodexPermissionModeConfig(mode.permissionMode).sandbox;
+function resolveSandbox(mode: EnhancedMode): SandboxMode | undefined {
+    return resolveCodexPermissionModeConfig(mode.permissionMode)?.sandbox;
 }
 
-function resolveSandboxPolicy(mode: EnhancedMode): SandboxPolicy {
-    return resolveCodexPermissionModeConfig(mode.permissionMode).sandboxPolicy;
+function resolveSandboxPolicy(mode: EnhancedMode): SandboxPolicy | undefined {
+    return resolveCodexPermissionModeConfig(mode.permissionMode)?.sandboxPolicy;
 }
 
 function resolveSandboxPolicyOverride(value: CodexCliOverrides['sandbox'] | undefined): SandboxPolicy | undefined {
@@ -225,8 +225,8 @@ export function buildThreadStartParams(args: {
 
     const params: ThreadStartParams = {
         cwd: args.cwd,
-        approvalPolicy: resolvedApprovalPolicy,
-        sandbox: resolvedSandbox,
+        ...(resolvedApprovalPolicy !== undefined ? { approvalPolicy: resolvedApprovalPolicy } : {}),
+        ...(resolvedSandbox !== undefined ? { sandbox: resolvedSandbox } : {}),
         ...(baseInstructions !== undefined ? { baseInstructions } : {}),
         developerInstructions: resolvedDeveloperInstructions,
         ...(Object.keys(configWithInstructions).length > 0 ? { config: configWithInstructions } : {})

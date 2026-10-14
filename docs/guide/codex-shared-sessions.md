@@ -54,6 +54,14 @@ has since changed. A compatible runner is required when one is already running.
 Update CLI, Runner and Hub together: the Hub must preserve shared pending input
 on execution exit rather than applying the legacy session-end queue sweep.
 
+## Permission defaults
+
+Permission mode **Default** inherits Codex's effective configuration for new
+threads. It sends no approval, sandbox, or reviewer override. Selecting Default
+on an existing shared thread preserves its current native permissions.
+Read-only and Yolo remain explicit presets. Native CLI permission flags and
+configuration overrides remain authoritative when HAPI Default is selected.
+
 ## Lifecycle
 
 - **Terminal-created execution**: the original terminal owns its lifetime.
