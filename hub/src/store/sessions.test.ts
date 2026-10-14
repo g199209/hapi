@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { Store } from './index'
 import { randomUUID } from 'node:crypto'
 import { SessionIdentityConflictError } from './sessions'
@@ -1291,5 +1291,38 @@ describe('replaceSessionTodos: watermark ratchet (PR #897 rewind race)', () => {
         expect(after?.todosUpdatedAt).toBe(51)
 
         store.close()
+    })
+})
+
+
+describe('snapshot replay activity clock', () => {
+    it('compares merged persisted JSON and preserves CAS/namespace rejection', () => {
+        const store = makeStore()
+        const session = store.sessions.getOrCreateSession('snapshot-replay',
+            { path: '/tmp', host: 'test', flavor: 'codex', codexSessionId: 'thread', name: 'Title' },
+            { requests: {}, completedRequests: {} }, 'default')
+        const clock = spyOn(Date, 'now').mockReturnValue(session.updatedAt + 60_000)
+        try {
+            // Sparse metadata restores carried identity fields before equality;
+            // undefined properties are not part of the persisted JSON value.
+            expect(store.sessions.updateSessionMetadata(session.id, { name: 'Title', absent: undefined },
+                session.metadataVersion, 'default').result).toBe('success')
+            expect(store.sessions.updateSessionAgentState(session.id,
+                { completedRequests: {}, requests: {}, absent: undefined }, session.agentStateVersion, 'default').result).toBe('success')
+            expect(store.sessions.getSession(session.id)?.updatedAt).toBe(session.updatedAt)
+            const current = store.sessions.getSession(session.id)!
+            expect(store.sessions.updateSessionMetadata(session.id, { name: 'Changed' },
+                session.metadataVersion, 'default').result).toBe('version-mismatch')
+            expect(store.sessions.updateSessionAgentState(session.id, { requests: { new: {} } },
+                session.agentStateVersion, 'default').result).toBe('version-mismatch')
+            expect(store.sessions.updateSessionMetadata(session.id, { name: 'Changed' },
+                current.metadataVersion, 'other').result).toBe('error')
+            expect(store.sessions.updateSessionAgentState(session.id, null,
+                current.agentStateVersion, 'other').result).toBe('error')
+            expect(store.sessions.getSession(session.id)?.updatedAt).toBe(session.updatedAt)
+            expect(store.sessions.updateSessionMetadata(session.id, { name: 'Changed' },
+                current.metadataVersion, 'default').result).toBe('success')
+            expect(store.sessions.getSession(session.id)?.updatedAt).toBe(session.updatedAt + 60_000)
+        } finally { clock.mockRestore(); store.close() }
     })
 })

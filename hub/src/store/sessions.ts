@@ -2,10 +2,17 @@ import type { Database } from 'bun:sqlite'
 import { prepareCached } from './statementCache'
 import { bumpSessionDeletionEpoch } from './sessionInvalidation'
 import { randomUUID } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 
 import type { StoredSession, VersionedUpdateResult } from './types'
 import { safeJsonParse } from './json'
 import { updateVersionedField } from './versionedUpdates'
+
+// Compare the persisted JSON value, including omitted undefined properties.
+// Replayed snapshots still advance CAS versions, but are not new activity.
+function hasSameStoredJson(prior: unknown, next: unknown): boolean {
+    return isDeepStrictEqual(prior, safeJsonParse(JSON.stringify(next) ?? null))
+}
 
 // Carry-forward fields that the hub preserves across any metadata
 // replacement when the incoming write omits them.
@@ -416,7 +423,6 @@ export function updateSessionMetadata(
     options?: { touchUpdatedAt?: boolean; allowUnarchive?: boolean }
 ): VersionedUpdateResult<unknown | null> {
     const now = Date.now()
-    const touchUpdatedAt = options?.touchUpdatedAt !== false
     const allowUnarchive = options?.allowUnarchive === true
 
     try {
@@ -442,6 +448,8 @@ export function updateSessionMetadata(
             ) {
                 merged = preserveHubArchiveOnMerged(prior, merged)
             }
+
+            const touchUpdatedAt = options?.touchUpdatedAt !== false && !hasSameStoredJson(prior, merged)
 
             const result = updateVersionedField({
                 db,
@@ -512,6 +520,8 @@ export function updateSessionAgentState(
 ): VersionedUpdateResult<unknown | null> {
     const now = Date.now()
     const normalized = agentState ?? null
+    const existing = getSessionByNamespace(db, id, namespace)
+    const touchUpdatedAt = !hasSameStoredJson(existing?.agentState ?? null, normalized)
 
     return updateVersionedField({
         db,
@@ -524,8 +534,8 @@ export function updateSessionAgentState(
         value: normalized,
         encode: (value) => (value === null ? null : JSON.stringify(value)),
         decode: safeJsonParse,
-        setClauses: ['updated_at = @updated_at', 'seq = seq + 1'],
-        params: { updated_at: now }
+        setClauses: ['updated_at = CASE WHEN @touch_updated_at = 1 THEN @updated_at ELSE updated_at END', 'seq = seq + 1'],
+        params: { updated_at: now, touch_updated_at: touchUpdatedAt ? 1 : 0 }
     })
 }
 

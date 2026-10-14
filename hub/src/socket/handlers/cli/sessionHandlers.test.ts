@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { AGENT_MESSAGE_PAYLOAD_TYPE } from '@hapi/protocol'
 import { Store, type StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
@@ -506,5 +506,54 @@ describe('cli session handlers', () => {
         expect(store.sessions.getSessionByNamespace(session.id, 'default')?.metadata).toMatchObject({
             supersededBySessionId: 'owned-target', opencodeClearOperation: operation, lifecycleState: 'archived'
         })
+    })
+})
+
+// Android and Web unread watermarks both compare the session's updatedAt.
+// Reconnecting bridges republish these snapshots after a Hub restart.
+describe('reconnect snapshot recency', () => {
+    it('keeps already-read recency on repeated metadata/state snapshots, through fresh handlers', () => {
+        const store = new Store(':memory:')
+        const namespace = 'default'
+        const session = store.sessions.getOrCreateSession('reconnect-recency',
+            { path: '/tmp/project', host: 'test', conversationHistoryPoints: { old: true } },
+            { requests: {}, completedRequests: {}, steeringActive: false, codexPlanProposalId: null }, namespace)
+        const seenAt = session.updatedAt
+        const clock = spyOn(Date, 'now').mockReturnValue(seenAt + 60_000)
+        const events: SyncEvent[] = []
+        try {
+            for (let reconnect = 0; reconnect < 2; reconnect++) {
+                const socket = new FakeSocket()
+                registerSessionHandlers(socket as unknown as CliSocketWithData, {
+                    store,
+                    resolveSessionAccess: () => ({ ok: true, value: store.sessions.getSession(session.id)! }),
+                    emitAccessError() {}, onWebappEvent: event => events.push(event)
+                })
+                const current = store.sessions.getSession(session.id)!
+                const metadataAck = mock(); const stateAck = mock()
+                // JSON key order is incidental to a snapshot, not new activity.
+                socket.trigger('update-metadata', { sid: session.id, expectedVersion: current.metadataVersion,
+                    metadata: { conversationHistoryPoints: { old: true }, host: 'test', path: '/tmp/project' } }, metadataAck)
+                socket.trigger('update-state', { sid: session.id, expectedVersion: current.agentStateVersion,
+                    agentState: { codexPlanProposalId: null, steeringActive: false, completedRequests: {}, requests: {} } }, stateAck)
+                expect(metadataAck.mock.calls[0][0]).toMatchObject({ result: 'success', version: current.metadataVersion + 1 })
+                expect(stateAck.mock.calls[0][0]).toMatchObject({ result: 'success', version: current.agentStateVersion + 1 })
+                expect(store.sessions.getSession(session.id)?.updatedAt).toBe(seenAt)
+            }
+            expect(events).toHaveLength(4)
+            for (const event of events) {
+                expect(event.type).toBe('session-updated')
+                if (event.type === 'session-updated') expect(event.data).toMatchObject({ updatedAt: seenAt })
+            }
+            // Real new content in the published state remains unread.
+            const socket = new FakeSocket()
+            registerSessionHandlers(socket as unknown as CliSocketWithData, {
+                store, resolveSessionAccess: () => ({ ok: true, value: store.sessions.getSession(session.id)! }), emitAccessError() {}
+            })
+            const current = store.sessions.getSession(session.id)!
+            socket.trigger('update-state', { sid: session.id, expectedVersion: current.agentStateVersion,
+                agentState: { ...current.agentState as object, requests: { new: { tool: 'command', createdAt: seenAt + 60_000 } } } }, () => {})
+            expect(store.sessions.getSession(session.id)?.updatedAt).toBeGreaterThan(seenAt)
+        } finally { clock.mockRestore(); store.close() }
     })
 })
