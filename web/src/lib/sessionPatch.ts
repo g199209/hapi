@@ -64,6 +64,7 @@ export function applySessionDetailPatch(session: Session, patch: SessionPatch): 
     }
     if (patch.active !== undefined) assign('active', patch.active)
     if (patch.lastMessagePreview !== undefined) assign('lastMessagePreview', patch.lastMessagePreview)
+    if (patch.lastMessageAt !== undefined) assign('lastMessageAt', Math.max(nextSession.lastMessageAt ?? 0, patch.lastMessageAt))
     if (patch.thinking !== undefined) assign('thinking', patch.thinking)
     if (patch.activeAt !== undefined) assign('activeAt', patch.activeAt)
     // Monotonic with hub applySessionPatch: a rejected stale

@@ -36,7 +36,10 @@ data class SessionSummary(
     val model: String? = null,
     val modelReasoningEffort: String? = null,
     val effort: String? = null,
-)
+    val lastMessageAt: Long? = null,
+) {
+    val unreadAt: Long get() = lastMessageAt ?: updatedAt
+}
 
 /** `SessionSummaryMetadata` — list-sized metadata projection. */
 @Serializable

@@ -168,3 +168,10 @@ describe('sessionIsUnread', () => {
         )).toBe(true)
     })
 })
+
+
+it('uses message time instead of maintenance time for unread and preserves real new activity', () => {
+    const summary = { updatedAt: 9000, lastMessageAt: 1500 } as import('@/types/api').SessionSummary
+    expect(sessionIsUnread(summary, { lastSeenAt: 2000 })).toBe(false)
+    expect(sessionIsUnread({ ...summary, lastMessageAt: 2500 }, { lastSeenAt: 2000 })).toBe(true)
+})

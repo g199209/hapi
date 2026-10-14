@@ -1,3 +1,4 @@
+import { getSessionUnreadAt } from '@hapi/protocol'
 import type { SessionSummary } from '@/types/api'
 
 export type SessionAttention =
@@ -11,7 +12,7 @@ export function sessionIsUnread(
     summary: SessionSummary,
     options: { lastSeenAt: number }
 ): boolean {
-    return summary.updatedAt > options.lastSeenAt
+    return getSessionUnreadAt(summary) > options.lastSeenAt
 }
 
 export function classifySessionAttention(
@@ -19,7 +20,7 @@ export function classifySessionAttention(
     options: { selected: boolean; lastSeenAt: number; manualUnreadAt?: number | null }
 ): SessionAttention | null {
     if (options.selected) {
-        return options.manualUnreadAt === summary.updatedAt
+        return options.manualUnreadAt === getSessionUnreadAt(summary)
             ? { kind: 'unread' }
             : null
     }

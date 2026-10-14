@@ -12,12 +12,15 @@ type NativeTurn = { id: string; status: string; items: unknown[] };
 vi.mock('../codexAppServerClient', () => ({
     CodexAppServerClient: class {
         initialized = false;
-        thread = { id: 'thread', turns: [] as NativeTurn[] };
+        thread = { id: 'thread', turns: [] as NativeTurn[], name: undefined as string | null | undefined, preview: undefined as string | undefined };
         settings: Record<string, unknown> = { model: 'mock', collaborationMode: { mode: 'default' } };
         queue: Array<{ id: string; clientUserMessageId: unknown; input: unknown }> = [];
         notify?: (method: string, params: unknown) => void;
         abandoned?: () => void;
-        setNotificationHandler(handler: typeof this.notify) { this.notify = handler; }
+        setNotificationHandler(handler: typeof this.notify) { this.notify = (method, params) => {
+            if (method === 'thread/name/updated' && (params as { threadId?: string }).threadId === 'thread') this.thread.name = (params as { threadName: string | null }).threadName;
+            handler?.(method, params);
+        }; }
         setTransportAbandonedHandler(handler: (() => void) | null) { this.abandoned = handler ?? undefined; }
         setServerRequestHandler() {}
         async connect() {}
@@ -25,7 +28,8 @@ vi.mock('../codexAppServerClient', () => ({
         isInitialized() { return this.initialized; }
         async disconnect() { this.initialized = false; }
         async request(method: string, params: Record<string, unknown> = {}) {
-            if (method === 'thread/read' || method === 'thread/resume') return { ...this.settings, thread: structuredClone(this.thread) };
+            if (method === 'thread/read' || method === 'thread/resume') { const thread = structuredClone(this.thread); if (thread.name === undefined) delete (thread as { name?: string }).name; if (thread.preview === undefined) delete thread.preview; return { ...this.settings, thread }; }
+            if (method === 'thread/name/set') { this.thread.name = params.name as string; this.notify?.('thread/name/updated', { threadId: 'thread', threadName: params.name }); return {}; }
             if (method === 'thread/list') return { data: [] };
             if (method === 'thread/queue/list') return { data: this.queue };
             if (method === 'thread/settings/update') {
@@ -88,7 +92,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
     await root.bind('thread', { model: 'mock', thread: { turns: [] } }, false);
     const native = root.client as unknown as {
         initialized: boolean;
-        thread: { id: string; turns: NativeTurn[] };
+        thread: { id: string; turns: NativeTurn[]; name?: string | null; preview?: string };
         queue: Array<{ id: string; clientUserMessageId: string; input: unknown }>;
         notify(method: string, params: unknown): void;
         abandoned(): void;
@@ -346,4 +350,66 @@ describe('shared steering availability', () => {
         await f.root.activate();
         await vi.waitFor(() => expect(end).toHaveBeenCalledTimes(1));
     });
+});
+
+
+describe('native title synchronization', () => {
+    it('hydrates native name and preview, refreshes missed changes, and handles native clear', async () => {
+        const f = await fixture();
+        f.native.thread.name = 'Native name'; f.native.thread.preview = 'Native first message';
+        await f.root.refresh(); expect(f.metadata().name).toBe('Native name');
+        f.native.thread.name = null; await f.root.refresh();
+        expect(f.metadata().name).toBe('Native first message');
+        f.native.thread.name = 'Renamed while offline'; f.reconnect();
+        await vi.waitFor(() => expect(f.metadata().name).toBe('Renamed while offline'));
+        f.native.notify('thread/name/updated', { threadId: 'thread', threadName: null });
+        expect(f.metadata().name).toBe('Native first message');
+        f.native.notify('thread/name/updated', { threadId: 'thread' });
+        expect(f.metadata().name).toBe('Native first message');
+        f.native.notify('thread/name/updated', { threadId: 'child', threadName: 'Child title' });
+        expect(f.metadata().name).toBe('Native first message');
+    });
+    it('does not let an older snapshot replace a live native rename', async () => {
+        const f = await fixture();
+        const original = f.root.readThread.bind(f.root);
+        let release!: (thread: Record<string, unknown>) => void;
+        vi.spyOn(f.root, 'readThread').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const refresh = f.root.refresh();
+        f.native.notify('thread/name/updated', { threadId: 'thread', threadName: 'New name' });
+        release({ ...(await original()), name: 'Stale name', preview: 'old preview' });
+        await refresh; expect(f.metadata().name).toBe('New name');
+    });
+    it('uses native preview after the first live user message without a separate rename', async () => {
+        const f = await fixture();
+        f.native.thread.name = null; f.native.thread.preview = ''; await f.root.refresh();
+        f.native.thread.preview = 'First live prompt';
+        f.native.notify('item/completed', { threadId: 'thread', turnId: 'turn', item: { id: 'user', type: 'userMessage', content: [{ type: 'text', text: 'First live prompt' }] } });
+        await vi.waitFor(() => expect(f.metadata().name).toBe('First live prompt'));
+    });
+    it('writes native name through the session RPC and keeps later native names authoritative', async () => {
+        const f = await fixture(); await f.root.activate();
+        const request = vi.spyOn(f.root.client, 'request');
+        expect(await f.rpc.get(RPC_METHODS.RenameCodexSession)!({ name: ' HAPI   title ' })).toEqual({ success: true, name: 'HAPI title' });
+        expect(request).toHaveBeenCalledWith('thread/name/set', { threadId: 'thread', name: 'HAPI title' });
+        expect(f.metadata().name).toBe('HAPI title');
+        request.mockRejectedValueOnce(new Error('native rename failed'));
+        await expect(f.rpc.get(RPC_METHODS.RenameCodexSession)!({ name: 'Unconfirmed' })).rejects.toThrow('native rename failed');
+        expect(f.metadata().name).toBe('HAPI title');
+        f.native.notify('thread/name/updated', { threadId: 'thread', threadName: 'Desktop title' });
+        expect(f.metadata().name).toBe('Desktop title');
+    });
+});
+
+
+it('keeps a later native rename when an earlier title-tool completion is still queued', async () => {
+    const f = await fixture();
+    f.native.notify('item/completed', { threadId: 'thread', turnId: 'turn', item: {
+        id: 'late-title', type: 'mcpToolCall', server: 'hapi', tool: 'change_title',
+        arguments: { title: 'Older tool title' }, status: 'completed', result: { content: [], isError: false }
+    } });
+    f.native.notify('thread/name/updated', { threadId: 'thread', threadName: 'Later native title' });
+    await vi.waitFor(() => expect(f.send).toHaveBeenCalled());
+    await f.root.refresh();
+    expect(f.metadata().name).toBe('Later native title');
+    expect(f.native.thread.name).toBe('Later native title');
 });

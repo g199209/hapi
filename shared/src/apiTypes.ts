@@ -340,6 +340,13 @@ export const RenameSessionRequestSchema = z.object({
 
 export type RenameSessionRequest = z.infer<typeof RenameSessionRequestSchema>
 
+export const RenameCodexSessionRpcRequestSchema = RenameSessionRequestSchema.extend({ sessionId: z.string().min(1) })
+export const RenameCodexSessionRpcResponseSchema = z.union([
+    z.object({ success: z.literal(true), name: z.string().min(1) }),
+    z.object({ success: z.literal(false), error: z.string() })
+])
+export type RenameCodexSessionRpcResponse = z.infer<typeof RenameCodexSessionRpcResponseSchema>
+
 export const UpdateSessionSummaryRequestSchema = z.object({
     text: z.string().trim().min(1).max(255)
 })

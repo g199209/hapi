@@ -62,6 +62,22 @@ on an existing shared thread preserves its current native permissions.
 Read-only and Yolo remain explicit presets. Native CLI permission flags and
 configuration overrides remain authoritative when HAPI Default is selected.
 
+## Shared conversation titles
+
+HAPI mirrors the native thread name, falling back to its native first-message
+preview when no explicit name is set. Attach, reconnect and live native renames
+all reconcile the displayed title. Renaming from HAPI writes the native thread
+name and confirms it before acknowledging; shared conversations no longer keep
+an independent HAPI alias. Successful HAPI title-tool calls also name the native
+thread.
+
+Inactive shared conversations can be renamed through their online
+Runner's configured shared app-server endpoint, without resuming the thread or
+changing its permissions. Native rename failures are reported rather than saved
+as a separate local alias. With the current Codex API, archived conversations
+require an explicit Reopen before renaming; HAPI does not silently unarchive
+them or keep a separate alias.
+
 ## Lifecycle
 
 - **Terminal-created execution**: the original terminal owns its lifetime.

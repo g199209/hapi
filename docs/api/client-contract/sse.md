@@ -166,6 +166,7 @@ The most bug-prone part of the protocol. `session-updated.data` is either a **fu
 Patch application, field by field:
 
 - **Flat fields** — `active`, `thinking`, `activeAt`, `model`, `modelReasoningEffort`, `effort`, `serviceTier`, `permissionMode`, `collaborationMode`, `copilotAgentMode`, `backgroundTaskCount`: last-write-wins assignment when present. `activeTurnStartedAt` appears in patches but the reference implementation deliberately never applies it from a patch (`web/src/lib/sessionPatch.ts`) — take it from full-session payloads only; the `sse/` fixtures pin this.
+- **`lastMessageAt`** — independent, max-monotonic conversation-message clock. Use it for device unread/last-seen comparisons; fall back to `updatedAt` only when an older Hub omits it. Runtime metadata, state and ready events do not advance it. The Hub restores it from persisted conversation history across restarts.
 - **`updatedAt`** — max-monotonic: `updatedAt = max(cached.updatedAt, patch.updatedAt)`. A stale replay must never move the clock backward.
 - **Versioned sub-patches** — `metadata`, `agentState`, `todos`, `teamState` each arrive as a wrapper `{version: number, value: …}`. Apply `value` and store `version` **only when `version` is strictly greater than the cached watermark**:
 

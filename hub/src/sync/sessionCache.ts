@@ -212,6 +212,7 @@ export class SessionCache {
 
         const session: Session = {
             lastMessagePreview: latestMessagePreview(this.store, sessionId),
+            lastMessageAt: stored.lastMessageAt ?? 0,
             hasConversationContent: this.store.messages.hasConversationContent(sessionId),
             id: stored.id,
             namespace: stored.namespace,
@@ -263,14 +264,25 @@ export class SessionCache {
         }
     }
 
+    refreshMessageClock(sessionId: string): void {
+        const session = this.sessions.get(sessionId)
+        const at = this.store.sessions.getSession(sessionId)?.lastMessageAt ?? 0
+        if (!session || session.lastMessageAt === at) return
+        session.lastMessageAt = at
+        this.publisher.emit({ type: 'session-updated', sessionId, namespace: session.namespace,
+            data: { lastMessageAt: at } satisfies SessionPatch })
+    }
+
     refreshMessagePreview(sessionId: string): void {
         const session = this.sessions.get(sessionId)
         if (!session) return
         const preview = latestMessagePreview(this.store, sessionId)
-        if (session.lastMessagePreview === preview) return
+        const lastMessageAt = this.store.sessions.getSession(sessionId)?.lastMessageAt ?? 0
+        if (session.lastMessagePreview === preview && session.lastMessageAt === lastMessageAt) return
         session.lastMessagePreview = preview
+        session.lastMessageAt = lastMessageAt
         this.publisher.emit({ type: 'session-updated', sessionId, namespace: session.namespace,
-            data: { lastMessagePreview: preview } satisfies SessionPatch })
+            data: { lastMessagePreview: preview, lastMessageAt } satisfies SessionPatch })
     }
 
     reloadAll(): void {

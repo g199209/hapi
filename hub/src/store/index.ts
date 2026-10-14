@@ -1,4 +1,6 @@
 import { Database } from 'bun:sqlite'
+import { hasConversationMessageContent } from '@hapi/protocol/messages'
+import { decodeMessageContent } from './contentCodec'
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -42,7 +44,7 @@ export {
     WorkGraphValidationError
 } from './workGraph'
 
-const SCHEMA_VERSION: number = 26
+const SCHEMA_VERSION: number = 27
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -348,6 +350,7 @@ export class Store {
             23: () => this.migrateFromV23ToV24(),
             24: () => this.migrateFromV24ToV25(),
             25: () => this.migrateFromV25ToV26(),
+            26: () => this.migrateFromV26ToV27(),
         })
 
         if (currentVersion === 0) {
@@ -402,6 +405,7 @@ export class Store {
                 machine_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
+                last_message_at INTEGER NOT NULL DEFAULT 0,
                 metadata TEXT,
                 metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT,
@@ -985,6 +989,21 @@ export class Store {
     }
 
     /** v25→v26: make empty immediate-queue heartbeat replay an indexed lookup. */
+    private migrateFromV26ToV27(): void {
+        if (this.getSessionColumnNames().has('last_message_at')) return
+        this.db.transaction(() => {
+            this.db.exec('ALTER TABLE sessions ADD COLUMN last_message_at INTEGER NOT NULL DEFAULT 0')
+            const exists = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get()
+            if (!exists) return
+            const update = this.db.prepare('UPDATE sessions SET last_message_at = MAX(last_message_at, ?) WHERE id = ?')
+            const rows = this.db.prepare(`SELECT session_id, content, COALESCE(invoked_at, created_at) AS at FROM messages
+                WHERE scheduled_at IS NULL OR invoked_at IS NOT NULL`).iterate() as Iterable<{ session_id: string; content: string | Uint8Array; at: number }>
+            for (const row of rows) {
+                if (hasConversationMessageContent(decodeMessageContent(row.content))) update.run(row.at, row.session_id)
+            }
+        })()
+    }
+
     private migrateFromV25ToV26(): void {
         this.db.exec(`
             CREATE INDEX IF NOT EXISTS idx_messages_immediate_queued

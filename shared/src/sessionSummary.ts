@@ -47,6 +47,7 @@ export type SessionSummaryMetadata = {
 
 export type SessionSummary = {
     lastMessagePreview?: string
+    lastMessageAt?: number
     hasConversationContent?: boolean
     id: string
     active: boolean
@@ -207,6 +208,7 @@ export function toSessionSummaryMetadata(metadata: Metadata | null | undefined):
 export function toSessionSummary(session: Session): SessionSummary {
     return {
         lastMessagePreview: session.lastMessagePreview,
+        lastMessageAt: session.lastMessageAt,
         hasConversationContent: session.hasConversationContent ?? false,
         id: session.id,
         active: session.active,
@@ -230,4 +232,10 @@ export function toSessionSummary(session: Session): SessionSummary {
         modelReasoningEffort: session.modelReasoningEffort,
         effort: session.effort
     }
+}
+
+
+/** Device read watermarks use only the persisted conversation-message clock. */
+export function getSessionUnreadAt(session: { updatedAt: number; lastMessageAt?: number | null }): number {
+    return session.lastMessageAt ?? session.updatedAt
 }

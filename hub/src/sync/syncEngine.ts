@@ -221,6 +221,7 @@ export class SyncEngine {
         this.eventPublisher.subscribe((event) => {
             if (event.type === 'message-received') {
                 if (extractMessagePreview(event.message.content)) this.sessionCache.refreshMessagePreview(event.sessionId)
+                else this.sessionCache.refreshMessageClock(event.sessionId)
                 if (!this.sessionCache.getSession(event.sessionId)?.hasConversationContent
                     && hasConversationMessageContent(event.message.content)) {
                     this.sessionCache.refreshConversationContent(event.sessionId)
@@ -2097,6 +2098,22 @@ export class SyncEngine {
     }
 
     async renameSession(sessionId: string, name: string): Promise<void> {
+        const session = this.getSession(sessionId)
+        if (session?.metadata?.flavor === 'codex' && session.metadata.capabilities?.concurrentClients) {
+            if (session.metadata.lifecycleState === 'archived') throw new Error('Reopen this Codex session before renaming: the native API does not rename archived threads')
+            if (session.active) {
+                await this.rpcGateway.renameCodexSession(sessionId, name)
+                // The bridge persists the confirmed native title before ACK.
+                this.sessionCache.refreshSession(sessionId)
+            } else {
+                const machineId = session.metadata.machineId
+                const nativeId = session.metadata.codexSessionId
+                if (!machineId || !nativeId) throw new Error('Native Codex binding is missing')
+                const applied = await this.rpcGateway.renameCodexSession(sessionId, name, { machineId, nativeId })
+                await this.sessionCache.renameSession(sessionId, applied)
+            }
+            return
+        }
         await this.sessionCache.renameSession(sessionId, name)
     }
 

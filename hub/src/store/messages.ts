@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { prepareCached } from './statementCache'
+import { recordMessageActivity } from './messageActivity'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
@@ -79,6 +80,7 @@ export function addImportedMessage(
         if (previousHead && stampedAt < previousHead.at) bumpMessageEpoch(db, sessionId)
         const row = prepareCached(db, 'SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
         if (!row) throw new Error('Failed to create imported message')
+        recordMessageActivity(db, sessionId, toStoredMessage(row).content, stampedAt, true)
         return { message: toStoredMessage(row), inserted: true }
     })()
 }
@@ -116,6 +118,7 @@ export function addProjectedMessage(db: Database, sessionId: string, content: un
                     .run(stampedAt, existing.id)
                 bumpMessageEpoch(db, sessionId)
             }
+            if (existing.scheduled_at != null && existing.invoked_at == null) recordMessageActivity(db, sessionId, decodeMessageContent(existing.content), Date.now())
             return toStoredMessage({ ...existing, invoked_at: stampedAt, scheduled_at: null, delivery_state: 'queued' })
         }
         const message = addMessage(db, sessionId, content, localId, undefined, stampedAt)
@@ -197,6 +200,7 @@ export function addMessage(
         if (previousHead && positionAt < previousHead.at) bumpMessageEpoch(db, sessionId)
         const row = prepareCached(db, 'SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
         if (!row) throw new Error('Failed to create message')
+        if (scheduledAt == null) recordMessageActivity(db, sessionId, toStoredMessage(row).content, now)
         return toStoredMessage(row)
     })()
 }
@@ -213,6 +217,7 @@ export function syncNativeQueuedMessage(db: Database, sessionId: string, localId
         const encoded = encodeMessageContent(truncateOversizedMessageContent(content))
         prepareCached(db, 'UPDATE messages SET content = ? WHERE session_id = ? AND local_id = ? AND invoked_at IS NULL')
             .run(encoded, sessionId, localId)
+        if (message.scheduledAt == null && !isDeepStrictEqual(message.content, content)) recordMessageActivity(db, sessionId, content, Date.now())
         return { ...message, content }
     })()
 }
@@ -272,6 +277,7 @@ export function copyMessageToSession(
     // still land behind a Web client's cached composite tail cursor. Mark the
     // target history as structurally changed so incremental readers reset.
     bumpMessageEpoch(db, sessionId)
+    if (message.scheduledAt == null || invokedAt !== null) recordMessageActivity(db, sessionId, message.content, invokedAt ?? createdAt, true)
     return toStoredMessage(row)
 }
 
@@ -323,6 +329,7 @@ export function copyMessagesToSession(
                 scheduled_at: message.scheduledAt ?? null,
                 delivery_state: message.deliveryState ?? 'queued'
             })
+            if (message.scheduledAt == null || invokedAt !== null) recordMessageActivity(db, sessionId, message.content, invokedAt ?? createdAt, true)
             nextSeq += 1
         }
 
@@ -922,13 +929,20 @@ export function markMessagesInvoked(
 ): number {
     if (localIds.length === 0) return 0
     const placeholders = localIds.map(() => '?').join(', ')
-    return prepareCached(db, 
+    return db.transaction(() => {
+    const scheduled = prepareCached(db, `SELECT content FROM messages WHERE session_id = ?
+        AND local_id IN (${placeholders}) AND invoked_at IS NULL AND scheduled_at IS NOT NULL`)
+        .all(sessionId, ...localIds) as Array<{ content: string | Uint8Array }>
+    const changes = prepareCached(db,
         `UPDATE messages
          SET invoked_at = ?, delivery_state = 'queued'
          WHERE session_id = ?
            AND local_id IN (${placeholders})
            AND invoked_at IS NULL`
     ).run(invokedAt, sessionId, ...localIds).changes
+    for (const row of scheduled) recordMessageActivity(db, sessionId, decodeMessageContent(row.content), Date.now())
+    return changes
+    })()
 }
 
 /** Move an uninvoked steer through its durable delivery states. */

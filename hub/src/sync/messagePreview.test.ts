@@ -45,7 +45,7 @@ describe('latest conversation preview', () => {
         const f = fixture(); f.events.length = 0
         f.store.messages.addMessage(f.id, user('New question'))
         f.cache.refreshMessagePreview(f.id); f.cache.refreshMessagePreview(f.id)
-        expect(f.events).toEqual([{ type: 'session-updated', sessionId: f.id, namespace: 'default', data: { lastMessagePreview: 'New question' } }])
+        expect(f.events).toEqual([{ type: 'session-updated', sessionId: f.id, namespace: 'default', data: { lastMessagePreview: 'New question', lastMessageAt: expect.any(Number) } }])
         expect(f.store.sessions.getSession(f.id)?.metadata).toMatchObject({ summary: { text: 'Original title', updatedAt: 1 } })
         expect(f.cache.getSession(f.id)?.metadata?.name).toBeUndefined()
         f.store.messages.addMessage(f.id, agent('New response')); f.cache.refreshMessagePreview(f.id)

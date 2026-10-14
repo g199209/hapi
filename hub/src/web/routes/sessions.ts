@@ -852,7 +852,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to rename session'
             // Map concurrency/version errors to 409 conflict
-            if (message.includes('concurrently') || message.includes('version')) {
+            if (message.includes('concurrently') || message.includes('version') || message.startsWith('Reopen this Codex session')) {
                 return c.json({ error: message }, 409)
             }
             return c.json({ error: message }, 500)

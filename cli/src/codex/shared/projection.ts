@@ -53,7 +53,8 @@ export class SharedCodexProjection {
     private excludedHistoryReasoning?: Set<string>;
     private readonly hadHistory: boolean;
     constructor(private readonly session: ApiSessionClient, readonly threadId: string,
-        private readonly committed: (id: string) => Promise<void>, private readonly parentThreadId?: string) {
+        private readonly committed: (id: string) => Promise<void>, private readonly parentThreadId?: string,
+        private readonly renameNative?: (title: string) => Promise<void>) {
         const metadata = session.getMetadata();
         this.hadHistory = Object.keys(metadata?.conversationHistoryTurns ?? {}).length > 0;
         if (metadata?.codexReasoningReplayExcluded) this.excludedHistoryReasoning = new Set(metadata.codexReasoningReplayExcluded);
@@ -82,7 +83,7 @@ export class SharedCodexProjection {
         });
     }
 
-    async notification(method: string, params: unknown, modelAtReceipt?: string): Promise<void> {
+    async notification(method: string, params: unknown, modelAtReceipt?: string, allowTitleRename = true): Promise<void> {
         const p = record(params);
         const item = record(p.item);
         if (!this.parentThreadId && p.threadId === this.threadId && string(item.id)) {
@@ -96,7 +97,10 @@ export class SharedCodexProjection {
                     if (completedTitle) {
                         this.completedTitles.add(key);
                         const revision = ++this.titleRevision;
-                        this.applyDisplayRename(completedTitle, revision);
+                        if (allowTitleRename) {
+                            if (this.renameNative) await this.renameNative(completedTitle);
+                            else this.applyDisplayRename(completedTitle, revision);
+                        }
                     }
                 }
             }

@@ -57,3 +57,46 @@ describe('shared Codex hub binding', () => {
         } finally { engine.stop() }
     })
 })
+
+
+it('renames active shared Codex through its native bridge and inactive through its machine', async () => {
+    const { store, engine, create, rpc } = fixture()
+    try {
+        const session = create('rename')
+        const calls: unknown[][] = []
+        rpc.renameCodexSession = async (...args) => {
+            calls.push(args)
+            if (!args[2]) {
+                const row = store.sessions.getSession(session.id)!
+                store.sessions.updateSessionMetadata(session.id, { ...row.metadata as object, name: 'Native normalized' }, row.metadataVersion, 'default', { touchUpdatedAt: false })
+            }
+            return 'Native normalized'
+        }
+        await engine.renameSession(session.id, 'Requested')
+        expect(engine.getSession(session.id)?.metadata?.name).toBe('Native normalized')
+        expect(calls[0]).toEqual([session.id, 'Requested'])
+        engine.handleSessionEnd({ sid: session.id, time: Date.now(), reason: 'terminated' })
+        await engine.renameSession(session.id, 'Offline request')
+        expect(calls[1]).toEqual([session.id, 'Offline request', { machineId: 'machine', nativeId: 'native-rename' }])
+        expect(engine.getSession(session.id)?.metadata?.name).toBe('Native normalized')
+        rpc.renameCodexSession = async () => { throw new Error('native unavailable') }
+        await expect(engine.renameSession(session.id, 'Unconfirmed')).rejects.toThrow('native unavailable')
+        expect(engine.getSession(session.id)?.metadata?.name).toBe('Native normalized')
+        const other = create('claude', { flavor: 'claude' })
+        await engine.renameSession(other.id, 'Claude local title')
+        expect(engine.getSession(other.id)?.metadata?.name).toBe('Claude local title')
+    } finally { engine.stop() }
+})
+
+
+it('preserves archive state instead of unarchiving a native thread just to rename it', async () => {
+    const { store, engine, create, rpc } = fixture()
+    try {
+        const session = create('archived-title', { lifecycleState: 'archived' })
+        let called = false
+        rpc.renameCodexSession = async () => { called = true; return 'Unexpected' }
+        await expect(engine.renameSession(session.id, 'New title')).rejects.toThrow('Reopen this Codex session')
+        expect(called).toBe(false)
+        expect(store.sessions.getSession(session.id)?.metadata).toMatchObject({ lifecycleState: 'archived' })
+    } finally { engine.stop() }
+})

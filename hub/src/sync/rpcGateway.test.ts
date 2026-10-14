@@ -13,6 +13,10 @@ function createGateway() {
             return {
                 async emitWithAck(_event: string, payload: { method: string; params: string }) {
                     calls.push(payload)
+                    if (payload.method.endsWith(':renameCodexSession')) {
+                        const name = JSON.parse(payload.params).name
+                        return JSON.stringify(name === 'Native failure' ? { error: 'Native unavailable' } : { success: true, name })
+                    }
                     if (payload.method.endsWith(':cursor-chat-store-status')) {
                         return JSON.stringify({ onDisk: false, store: null })
                     }
@@ -208,4 +212,21 @@ describe('RpcGateway permission RPC error surfacing (tiann/hapi#1735)', () => {
         const { gateway } = createGateway()
         await expect(gateway.approvePermission('session-1', 'request-1')).resolves.toBeUndefined()
     })
+})
+
+
+it('scopes native title RPC to the active session or its inactive machine binding', async () => {
+    const { gateway, calls } = createGateway()
+    expect(await gateway.renameCodexSession('session', 'Title')).toBe('Title')
+    expect(await gateway.renameCodexSession('session', 'Offline', { machineId: 'machine', nativeId: 'native' })).toBe('Offline')
+    expect(calls.map(call => [call.method, JSON.parse(call.params)])).toEqual([
+        ['session:renameCodexSession', { name: 'Title' }],
+        ['machine:renameCodexSession', { sessionId: 'native', name: 'Offline' }]
+    ])
+})
+
+
+it('reports native rename errors without turning them into a schema error', async () => {
+    const { gateway } = createGateway()
+    await expect(gateway.renameCodexSession('session', 'Native failure')).rejects.toThrow('Native unavailable')
 })

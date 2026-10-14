@@ -11,6 +11,9 @@ const listCopilotModelsForCwdMock = vi.hoisted(() => vi.fn())
 const listKimiModelsForCwdMock = vi.hoisted(() => vi.fn())
 const inspectCursorChatStoreMock = vi.hoisted(() => vi.fn())
 
+const renameInactiveMock = vi.hoisted(() => vi.fn())
+vi.mock('@/codex/shared/title', () => ({ renameInactiveCodexThread: renameInactiveMock }))
+
 vi.mock('socket.io-client', () => ({
     io: ioMock
 }))
@@ -976,4 +979,20 @@ describe('ApiMachineClient connect runner-state advertisement', () => {
             client.shutdown()
         }
     })
+})
+
+
+it('routes inactive native rename through the machine and its workspace policy', async () => {
+    const machine = makeMachine('title-machine')
+    const client = new ApiMachineClient('cli-token', machine, ['/tmp'])
+    renameInactiveMock.mockImplementationOnce(async (id, name, canRename) => {
+        expect(id).toBe('native-thread'); expect(await canRename('/tmp')).toBe(true)
+        expect(await canRename('/etc')).toBe(false)
+        return name
+    })
+    try {
+        const manager = (client as unknown as { rpcHandlerManager: { handleRequest: (req: { method: string; params: string }) => Promise<string> } }).rpcHandlerManager
+        const result = JSON.parse(await manager.handleRequest({ method: `${machine.id}:renameCodexSession`, params: JSON.stringify({ sessionId: 'native-thread', name: 'Unified title' }) }))
+        expect(result).toEqual({ success: true, name: 'Unified title' })
+    } finally { client.shutdown() }
 })

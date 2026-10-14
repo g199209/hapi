@@ -1,3 +1,4 @@
+import { getSessionUnreadAt } from '@hapi/protocol'
 import { useSyncExternalStore } from 'react'
 
 const STORAGE_KEY = 'hapi.sessionLastSeen.v1'
@@ -150,17 +151,18 @@ export function getSessionLastSeenSnapshot(): Readonly<Record<string, number>> {
 type SessionReadStateInput = {
     id: string
     updatedAt: number
+    lastMessageAt?: number
 }
 
 function latestSessionUpdates(sessions: Iterable<SessionReadStateInput>): Map<string, number> {
     const latest = new Map<string, number>()
     for (const session of sessions) {
-        if (!session.id || !Number.isFinite(session.updatedAt)) {
+        if (!session.id || !Number.isFinite(getSessionUnreadAt(session))) {
             continue
         }
         const current = latest.get(session.id)
-        if (current === undefined || session.updatedAt > current) {
-            latest.set(session.id, session.updatedAt)
+        if (current === undefined || getSessionUnreadAt(session) > current) {
+            latest.set(session.id, getSessionUnreadAt(session))
         }
     }
     return latest
@@ -238,7 +240,7 @@ export function markAllSessionsSeen(sessions: Iterable<SessionReadStateInput>): 
     return count
 }
 
-export function initializeSessionLastSeen(scope: string, sessions: Iterable<{ id: string; updatedAt: number }>): void {
+export function initializeSessionLastSeen(scope: string, sessions: Iterable<SessionReadStateInput>): void {
     const storage = getLocalStorage()
     if (!storage) {
         return
@@ -251,7 +253,7 @@ export function initializeSessionLastSeen(scope: string, sessions: Iterable<{ id
         }
         const store = readStore()
         for (const session of sessions) {
-            store[session.id] ??= session.updatedAt
+            store[session.id] ??= getSessionUnreadAt(session)
         }
         storage.setItem(STORAGE_KEY, JSON.stringify(store))
         storage.setItem(baselineKey, '1')

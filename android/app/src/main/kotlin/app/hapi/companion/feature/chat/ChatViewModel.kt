@@ -631,12 +631,12 @@ class ChatViewModel(
         scratchlist?.open(sessionId)
 
         seenJob = scope.launch {
-            // Watermark = updatedAt currently on screen, from whichever cache
+            // Watermark = lastMessageAt currently on screen, from whichever cache
             // is fresher (summary via global events, detail via this pipe).
             merge(
                 sessionStore.sessions
-                    .map { list -> list.firstOrNull { it.id == sessionId }?.updatedAt },
-                sessionStore.sessionDetail(sessionId).map { it?.updatedAt },
+                    .map { list -> list.firstOrNull { it.id == sessionId }?.unreadAt },
+                sessionStore.sessionDetail(sessionId).map { it?.unreadAt },
             )
                 .filterNotNull()
                 .distinctUntilChanged()

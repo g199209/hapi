@@ -10,6 +10,18 @@ import kotlinx.coroutines.test.runTest
 class LastSeenStoreTest {
 
     @Test
+    fun `maintenance metadata never makes seen conversation unread and old watermarks survive`() = runTest {
+        val store = LastSeenStore(backgroundScope)
+        store.markSeen("s1", 2_000)
+        val seen = summary("s1", updatedAt = 9_000).copy(lastMessageAt = 1_500)
+        assertFalse(LastSeenStore.isUnread(seen, store.lastSeenAt("s1")))
+        assertTrue(LastSeenStore.isUnread(seen.copy(lastMessageAt = 2_500), store.lastSeenAt("s1")))
+        store.initializeBaseline("existing", listOf(seen))
+        assertEquals(2_000, store.lastSeenAt("s1"))
+        assertFalse(LastSeenStore.isUnread(seen.copy(lastMessageAt = 0), 0))
+    }
+
+    @Test
     fun `markSeen is monotonic max`() = runTest {
         val store = LastSeenStore(backgroundScope)
         store.markSeen("s1", 1_000)

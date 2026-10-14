@@ -350,6 +350,20 @@ freezes tail following, cancels hidden history loading and recording, and hides
 the keyboard. Returning retains the transcript anchor. Trimmed selections remain
 readable as labeled snapshots; an epoch reset closes obsolete inspectors.
 
+## Read watermarks
+
+Unread dots use the Hub's persisted `lastMessageAt` conversation clock, with
+`updatedAt` only as a fallback for older Hubs. Runtime PID/version/title/state
+updates and ready events never advance this clock. Reading the list/chat keeps
+the device's existing timestamp watermarks, so switching to the message clock
+removes maintenance-induced unread dots without resetting read history.
+
+`UnreadClockLiveTest` is opt-in: provide `unreadSessions` (comma-separated idle
+session IDs) and `unreadFixture` (an empty isolated session). The host waits for
+its ready marker, restarts Hub/Runner and changes a bridge PID, signals done,
+then sends one fixture message. It verifies seen rows stay read and the new
+message becomes unread against the real Hub/SSE stores.
+
 ## Accepted-send recovery
 
 After a successful send, the visible conversation reconciles its message tail

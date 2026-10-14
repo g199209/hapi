@@ -43,6 +43,7 @@ fun isRenderIrrelevantSessionPatch(session: Session, patch: SessionPatch): Boole
     patch.active?.let { if (session.active != it) return false }
     patch.thinking?.let { if (session.thinking != it) return false }
     patch.lastMessagePreview?.let { if (session.lastMessagePreview != it) return false }
+    patch.lastMessageAt?.let { if (session.lastMessageAt != it) return false }
     if (patch.activeTurnStartedAt is OptionalField.Present
         && session.activeTurnStartedAt != patch.activeTurnStartedAt.value
     ) {
@@ -106,6 +107,7 @@ fun applySessionDetailPatch(session: Session, patch: SessionPatch): Session? {
     patch.active?.let { if (next.active != it) set(next.copy(active = it)) }
     patch.thinking?.let { if (next.thinking != it) set(next.copy(thinking = it)) }
     patch.lastMessagePreview?.let { if (next.lastMessagePreview != it) set(next.copy(lastMessagePreview = it)) }
+    patch.lastMessageAt?.let { val value = max(next.lastMessageAt ?: 0, it); if (next.lastMessageAt != value) set(next.copy(lastMessageAt = value)) }
     patch.activeAt?.let { if (next.activeAt != it) set(next.copy(activeAt = it)) }
     // Monotonic with hub applySessionPatch: a rejected stale
     // metadata/agentState replay must not rewind updatedAt.

@@ -1,3 +1,4 @@
+import { renameInactiveCodexThread } from '@/codex/shared/title'
 /**
  * WebSocket client for machine/runner communication with hapi-hub
  */
@@ -10,6 +11,7 @@ import { configuration } from '@/configuration'
 import type { ClientToServerEvents, ServerToClientEvents, Update, UpdateMachineBody } from '@hapi/protocol'
 import {
     ArchiveCodexSessionRpcRequestSchema,
+    RenameCodexSessionRpcRequestSchema,
     ListCodexSessionsRpcRequestSchema,
     ListPiSessionsRpcRequestSchema,
     type ArchiveCodexSessionRpcResponse,
@@ -356,6 +358,15 @@ export class ApiMachineClient {
                 return { success: true, sessions }
             }
         )
+
+        this.rpcHandlerManager.registerHandler(RPC_METHODS.RenameCodexSession, async (params: unknown) => {
+            const { sessionId, name } = RenameCodexSessionRpcRequestSchema.parse(params)
+            const appliedName = await renameInactiveCodexThread(sessionId, name, async cwd => {
+                const resolved = await this.pathPolicy.resolveForCheck(cwd)
+                return this.pathPolicy.isWithinSpawnRoots(resolved)
+            })
+            return { success: true, name: appliedName }
+        })
 
         this.rpcHandlerManager.registerHandler<unknown, ArchiveCodexSessionRpcResponse>(
             RPC_METHODS.ArchiveCodexSession,

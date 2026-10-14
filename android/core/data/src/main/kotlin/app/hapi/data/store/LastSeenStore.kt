@@ -20,9 +20,9 @@ data class LastSeenState(
  * (localStorage → per-hub JSON snapshot) plus the unread derivation from
  * `web/src/lib/sessionAttention.ts`.
  *
- * The watermark is the session `updatedAt` the operator last had on screen;
- * a session is **unread** when its current `updatedAt` moved past it
- * ([isUnread] — the reference compares `updatedAt` only; message `seq` never
+ * The watermark is the session `lastMessageAt` the operator last had on screen;
+ * a session is **unread** when its current message clock moved past it
+ * ([isUnread] — the reference uses the message clock; message `seq` never
  * reaches the summary). [initializeBaseline] seeds missing watermarks from
  * the first session list so a fresh install does not mark every historical
  * session unread — once per [LastSeenState.baselines] scope, exactly like the
@@ -64,14 +64,14 @@ class LastSeenStore(
     /**
      * `initializeSessionLastSeen`: on the first list load for [scopeKey]
      * (e.g. the hub id), seed every session without a watermark at its
-     * current `updatedAt`, then never again for that scope.
+     * current message clock, then never again for that scope.
      */
     fun initializeBaseline(scopeKey: String, sessions: Iterable<SessionSummary>) {
         updateState { state ->
             if (scopeKey in state.baselines) return@updateState state
             val seeded = state.lastSeen.toMutableMap()
             for (session in sessions) {
-                seeded.getOrPut(session.id) { session.updatedAt }
+                seeded.getOrPut(session.id) { session.unreadAt }
             }
             state.copy(lastSeen = seeded, baselines = state.baselines + scopeKey)
         }
@@ -92,6 +92,6 @@ class LastSeenStore(
     companion object {
         /** `sessionIsUnread`: activity newer than the operator's watermark. */
         fun isUnread(summary: SessionSummary, lastSeenAt: Long): Boolean =
-            summary.updatedAt > lastSeenAt
+            summary.unreadAt > lastSeenAt
     }
 }

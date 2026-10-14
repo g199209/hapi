@@ -57,7 +57,10 @@ data class Session(
     val permissionMode: String? = null,
     val collaborationMode: String? = null,
     val copilotAgentMode: String? = null,
-)
+    val lastMessageAt: Long? = null,
+) {
+    val unreadAt: Long get() = lastMessageAt ?: updatedAt
+}
 
 /**
  * One TodoWrite item (`TodoItemSchema`). zod defaults `priority` to

@@ -23,6 +23,8 @@ import { getCodexSystemPrompt } from '../utils/systemPrompt';
 import { record, string } from './gateway';
 import { initializeSharedClient, type SharedLaunchOptions } from './launch';
 import { inheritedSandbox, settingsMatch } from './settings';
+import { nativeCodexTitle, renameNativeCodexThread } from './title';
+import { RenameSessionRequestSchema } from '@hapi/protocol/apiTypes';
 import { planImplementationMessageId, planProposalForItem, planProposalForTurn } from './plan';
 
 type RuntimeSettings = NonNullable<Parameters<ApiSessionClient['keepAlive']>[2]>;
@@ -62,6 +64,8 @@ export class SharedCodexRoot {
     private submittingPlan = false;
     private steeringActive: boolean | undefined;
     private turnRevision = 0;
+    private titleRevision = 0;
+    private nativePreview?: string;
     private settingsRevision = 0;
     private refreshing?: Promise<void>;
     private interrupted = false;
@@ -83,6 +87,13 @@ export class SharedCodexRoot {
         this.client.setNotificationHandler((method, params) => {
             if (method === 'serverRequest/resolved') {
                 this.permissions?.resolved(string(record(params).threadId) ?? '', record(params).requestId); return;
+            }
+            if (method === 'thread/name/updated' && record(params).threadId === this.threadId) {
+                const p = record(params);
+                if (typeof p.threadName === 'string' || p.threadName == null) {
+                    this.titleRevision++;
+                    this.syncNativeTitle({ name: p.threadName, preview: this.nativePreview }, this.titleRevision);
+                }
             }
             if (method === 'thread/settings/updated' && record(params).threadId === this.threadId) this.acceptSettings(record(record(params).threadSettings));
             if (record(params).threadId === this.threadId) {
@@ -110,8 +121,9 @@ export class SharedCodexRoot {
                 }
                 this.publishPlan();
             }
+            const thisTitleRevision = this.titleRevision;
             const modelAtReceipt = record(params).threadId === this.threadId ? this.settings.model ?? undefined : undefined;
-            this.notifications = this.notifications.then(() => this.notification(method, params, modelAtReceipt)).catch(error => logger.debug('[Codex shared] projection', error));
+            this.notifications = this.notifications.then(() => this.notification(method, params, modelAtReceipt, thisTitleRevision)).catch(error => logger.debug('[Codex shared] projection', error));
         });
         this.client.setTransportAbandonedHandler(() => { void this.reconnect(); });
         this.session.onUserMessage((message, localId) => {
@@ -205,7 +217,7 @@ export class SharedCodexRoot {
             });
         await this.asyncQuestions.load();
         this.permissions.setAsyncReplyHandler(reply => this.asyncQuestions.answer(reply));
-        this.projection = new SharedCodexProjection(this.session, threadId, id => this.queue.committed(id));
+        this.projection = new SharedCodexProjection(this.session, threadId, id => this.queue.committed(id), undefined, title => this.rename(title).then(() => {}));
         this.session.updateMetadata(metadata => ({ ...metadata, codexSessionId: threadId, capabilities: {
             ...metadata.capabilities, concurrentClients: true, terminal: true,
             // In-place rewind needs a native + hub commit barrier. Do not
@@ -269,7 +281,7 @@ export class SharedCodexRoot {
         for (const listener of this.settingsListeners) listener();
         this.publishPlan();
     }
-    private async notification(method: string, params: unknown, modelAtReceipt?: string): Promise<void> {
+    private async notification(method: string, params: unknown, modelAtReceipt: string | undefined, titleRevision: number): Promise<void> {
         if (!this.threadId || this.closed) return;
         const p = record(params);
         if (method === 'thread/started') {
@@ -287,16 +299,35 @@ export class SharedCodexRoot {
             await projection.notification(method, params); return;
         }
         if (method === 'turn/completed') this.session.sendSessionEvent({ type: 'ready' });
-        if (method === 'thread/name/updated' && (typeof p.threadName === 'string' || p.threadName === null)) {
-            const name = p.threadName ?? undefined; this.session.updateMetadata(metadata => ({ ...metadata, name }));
-        }
         if (method === 'thread/archived') { await this.host.end(this, false); return; }
         if (method === 'thread/queue/changed') await this.queue.reconcile();
         if (method === 'item/completed') {
+            if (record(p.item).type === 'userMessage' && !this.nativePreview) {
+                const revision = this.titleRevision;
+                const thread = record(record(await this.client.request('thread/read', { threadId: this.threadId, includeTurns: false })).thread);
+                this.syncNativeTitle(thread, revision);
+            }
             await this.asyncQuestions.receive(record(p.item));
             if (record(p.item).type === 'userMessage') await this.asyncQuestions.userMessage(record(p.item));
         }
-        await this.projection.notification(method, params, modelAtReceipt); this.alive();
+        await this.projection.notification(method, params, modelAtReceipt, titleRevision === this.titleRevision); this.alive();
+    }
+    private syncNativeTitle(thread: Record<string, unknown>, revision: number): void {
+        if (revision !== this.titleRevision || !('name' in thread || 'preview' in thread)) return;
+        if (typeof thread.preview === 'string') this.nativePreview = thread.preview;
+        const name = nativeCodexTitle(thread);
+        this.session.updateMetadata(metadata => {
+            if (revision !== this.titleRevision) return metadata;
+            if (metadata.name === name && (name || !metadata.summary)) return metadata;
+            return { ...metadata, name, ...(!name ? { summary: undefined } : {}) };
+        });
+    }
+    private async rename(name: string): Promise<{ success: true; name: string }> {
+        const revision = this.titleRevision;
+        const thread = await renameNativeCodexThread(this.client, this.threadId, name);
+        this.syncNativeTitle(thread, revision);
+        await this.session.flush();
+        return { success: true, name: thread.name as string };
     }
     async readThread(threadId = this.threadId): Promise<Record<string, unknown>> {
         let thread = record(record(await this.client.request('thread/read', { threadId, includeTurns: false })).thread);
@@ -317,7 +348,9 @@ export class SharedCodexRoot {
     private async refreshNow(): Promise<void> {
         if (!this.threadId || this.closed || !this.client.isInitialized()) return;
         const revision = this.turnRevision;
+        const titleRevision = this.titleRevision;
         const thread = await this.readThread();
+        this.syncNativeTitle(thread, titleRevision);
         const turns = Array.isArray(thread.turns) ? thread.turns.map(record) : [];
         if (revision === this.turnRevision) {
             this.currentTurn = string(turns.find(turn => turn.status === 'inProgress')?.id);
@@ -501,6 +534,7 @@ export class SharedCodexRoot {
             exitFromHubArchive();
         }
         this.session.on('hub-archived', exitFromHubArchive);
+        rpc.registerHandler(RPC_METHODS.RenameCodexSession, raw => this.rename(RenameSessionRequestSchema.parse(raw).name));
         rpc.registerHandler(RPC_METHODS.SetSessionConfig, raw => this.applySettings(raw));
         rpc.registerHandler(RPC_METHODS.ImplementCodexPlan, raw => {
             const { planId } = ImplementCodexPlanRequestSchema.parse(raw);

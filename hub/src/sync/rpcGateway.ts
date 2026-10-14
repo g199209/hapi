@@ -2,6 +2,7 @@ import type { AgentFlavor, CodexCollaborationMode, CopilotAgentMode, PermissionM
 import { PERMISSION_REQUEST_NOT_FOUND_MESSAGE, RPC_METHODS } from '@hapi/protocol/rpcMethods'
 import {
     ArchiveCodexSessionRpcResponseSchema,
+    RenameCodexSessionRpcResponseSchema,
     AgentAvailabilityResponseSchema,
     CursorChatStoreStatusSchema,
     ListCodexSessionsRpcResponseSchema,
@@ -467,6 +468,16 @@ export class RpcGateway {
     async archiveCodexSessionForMachine(machineId: string, sessionId: string): Promise<RpcArchiveCodexSessionResponse> {
         const result = await this.machineRpc(machineId, RPC_METHODS.ArchiveCodexSession, { sessionId }, MODEL_LIST_RPC_TIMEOUT_MS)
         return ArchiveCodexSessionRpcResponseSchema.parse(result)
+    }
+
+    async renameCodexSession(sessionId: string, name: string, inactive?: { machineId: string; nativeId: string }): Promise<string> {
+        const result = inactive
+            ? await this.machineRpc(inactive.machineId, RPC_METHODS.RenameCodexSession, { sessionId: inactive.nativeId, name })
+            : await this.sessionRpc(sessionId, RPC_METHODS.RenameCodexSession, { name })
+        if (result && typeof result === 'object' && 'error' in result && typeof result.error === 'string') throw new Error(result.error)
+        const parsed = RenameCodexSessionRpcResponseSchema.parse(result)
+        if (!parsed.success) throw new Error(parsed.error)
+        return parsed.name
     }
 
     async listCursorModelsForSession(sessionId: string): Promise<RpcListCursorModelsResponse> {
