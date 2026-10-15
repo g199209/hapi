@@ -429,13 +429,49 @@ class NewSessionViewModelTest {
         prefs: FakePrefs,
         initialMachineId: String? = null,
         scope: CoroutineScope = newVmScope(),
+        importGateway: CodexSessionImportGateway = FakeCodexSessionImportGateway(),
     ): NewSessionViewModel = NewSessionViewModel(
         gateway = gateway,
+        importGateway = importGateway,
         machineStore = machines,
         prefs = prefs,
         scope = scope,
         initialMachineId = initialMachineId,
     )
+
+    @Test
+    fun `import entry uses selected machine and navigates without spawning or applying create options`() = runTest {
+        val gateway = FakeGateway()
+        val importer = FakeCodexSessionImportGateway().apply {
+            listResponse = app.hapi.protocol.wire.CodexLocalSessionsResponse(
+                true, listOf(app.hapi.protocol.wire.CodexLocalSessionSummary("original", "Native title", 10, "/native/project")),
+            )
+        }
+        val prefs = FakePrefs()
+        val vmScope = newVmScope()
+        val vm = buildViewModel(gateway, FakeMachineStore(listOf(machine("m1"), machine("m2"))), prefs, scope = vmScope, importGateway = importer)
+        val opened = mutableListOf<String>()
+        vmScope.launch { vm.spawned.collect(opened::add) }
+        advanceUntilIdle()
+        vm.setMachine("m2")
+        vm.setModel("unrelated-launch-model")
+        vm.setPermissionMode("yolo")
+        vm.setModelReasoningEffort("xhigh")
+        vm.openCodexImport()
+        advanceUntilIdle()
+        assertEquals("m2", vm.codexImport.state.value.machineId)
+        vm.create()
+        vm.codexImport.select("original")
+        vm.codexImport.confirm()
+        advanceUntilIdle()
+        assertEquals(listOf("m2" to "original"), importer.imports)
+        assertTrue(gateway.spawnCalls.isEmpty())
+        assertEquals(listOf("hapi-resumed"), opened)
+        assertEquals("m2", prefs.stored.lastMachineId)
+        assertEquals(listOf("/native/project"), prefs.stored.recentPaths["m2"])
+        assertTrue(prefs.draftCleared)
+        vmScope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+    }
 
     @Test
     fun `directory autocomplete debounces, lists parent once and reuses the cache`() = runTest {

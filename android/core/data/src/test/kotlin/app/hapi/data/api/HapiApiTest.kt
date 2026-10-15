@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -58,6 +59,45 @@ class HapiApiTest {
         .setBody(body)
 
     private fun lastRequestBody() = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+
+    @Test
+    fun `Codex history selects explicit remote machine and import preserves native options`() = runBlocking {
+        server.enqueue(ok("""{"success":true,"machineId":"remote 2","sessions":[{"id":"native1","title":"中文 session","modifiedAt":1791980000000.6921,"cwd":"/home/project","file":"rollout.jsonl","lastUserMessage":null}]}"""))
+        val history = session.api.getCodexSessions("remote 2")
+        assertTrue(history.success)
+        assertEquals("中文 session", history.sessions.single().title)
+        assertEquals(1791980000000L, history.sessions.single().modifiedAt)
+        val listRequest = server.takeRequest()
+        assertEquals("/api/codex/sessions", listRequest.requestUrl!!.encodedPath)
+        assertEquals("remote 2", listRequest.requestUrl!!.queryParameter("machineId"))
+        assertNull(listRequest.requestUrl!!.queryParameter("cwd"))
+
+        server.enqueue(ok("""{"success":true,"hapiSessionIds":["existing"],"syncedCount":1}"""))
+        assertEquals(listOf("existing"), session.api.importCodexSession("remote 2", "native1").hapiSessionIds)
+        val importRequest = server.takeRequest()
+        assertEquals("/api/codex/sync-session", importRequest.path)
+        val body = Json.parseToJsonElement(importRequest.body.readUtf8()).jsonObject
+        assertEquals(setOf("machineId", "sessionIds"), body.keys)
+        assertEquals("remote 2", body["machineId"]!!.jsonPrimitive.content)
+        assertEquals("native1", body["sessionIds"]!!.jsonArray.single().jsonPrimitive.content)
+
+        server.enqueue(ok("""{"type":"success","sessionId":"resumed"}"""))
+        assertEquals("resumed", session.api.resumeSession("existing").sessionId)
+        val resumeRequest = server.takeRequest()
+        assertEquals("/api/sessions/existing/resume", resumeRequest.path)
+        assertEquals(emptySet(), Json.parseToJsonElement(resumeRequest.body.readUtf8()).jsonObject.keys)
+    }
+
+    @Test
+    fun `Codex history and import failures retain RPC envelope errors`() = runBlocking {
+        server.enqueue(ok("""{"success":false,"sessions":[],"error":"Runner offline"}"""))
+        assertEquals("Runner offline", session.api.getCodexSessions("m1").error)
+        server.takeRequest()
+        server.enqueue(ok("""{"success":false,"error":"Thread missing"}"""))
+        val result = session.api.importCodexSession("m1", "missing")
+        assertFalse(result.success)
+        assertEquals("Thread missing", result.error)
+    }
 
     @Test
     fun `production clients reject cleartext hub urls`() {

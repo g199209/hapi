@@ -73,6 +73,7 @@ fun NewSessionScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val directoryBrowser by viewModel.directoryBrowser.state.collectAsState()
+    val codexImport by viewModel.codexImport.state.collectAsState()
 
     LaunchedEffect(viewModel) {
         viewModel.spawned.collect(onCreated)
@@ -116,6 +117,7 @@ fun NewSessionScreen(
             onCopilotAgentModeSelected = viewModel::setCopilotAgentMode,
             onServiceTierSelected = viewModel::setServiceTier,
             onCreate = viewModel::create,
+            onCodexImport = viewModel::openCodexImport,
         )
     }
     if (directoryBrowser.open) {
@@ -128,6 +130,17 @@ fun NewSessionScreen(
             onRefresh = viewModel.directoryBrowser::refresh,
             onIncludeHiddenChange = viewModel.directoryBrowser::setIncludeHidden,
             onSelect = viewModel::selectBrowsedDirectory,
+        )
+    }
+    if (codexImport.open) {
+        CodexSessionImportSheet(
+            state = codexImport,
+            onDismiss = viewModel.codexImport::close,
+            onRefresh = viewModel.codexImport::refresh,
+            onQueryChange = viewModel.codexImport::setQuery,
+            onDirectoryChange = viewModel.codexImport::setDirectory,
+            onSelect = viewModel.codexImport::select,
+            onConfirm = viewModel.codexImport::confirm,
         )
     }
 }
@@ -155,6 +168,7 @@ internal fun NewSessionContent(
     onCopilotAgentModeSelected: (String) -> Unit,
     onServiceTierSelected: (String) -> Unit,
     onCreate: () -> Unit,
+    onCodexImport: () -> Unit = {},
 ) {
     val form = state.form
     Column(
@@ -165,6 +179,10 @@ internal fun NewSessionContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         MachineSection(state, onMachineSelected)
+        OutlinedCodexImportButton(
+            enabled = state.machines.any { it.id == state.form.machineId } && !state.isSpawning && !state.machinesLoading,
+            onClick = onCodexImport,
+        )
         DirectorySection(
             state = state,
             onDirectoryChange = onDirectoryChange,

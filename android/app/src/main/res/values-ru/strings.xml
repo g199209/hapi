@@ -605,4 +605,18 @@
     <string name="sessions_group_collapsed">Свёрнуто</string>
     <string name="sessions_search_open">Поиск сеансов</string>
     <string name="sessions_search_close">Закрыть поиск</string>
+
+    <!-- Existing native Codex sessions -->
+    <string name="codex_import_title">Импорт существующего сеанса Codex</string>
+    <string name="codex_import_description">Продолжить исходный thread с его model, reasoning effort и permission settings.</string>
+    <string name="codex_import_refresh">Обновить</string>
+    <string name="codex_import_search">Поиск сеансов</string>
+    <string name="codex_import_all_directories">Все каталоги</string>
+    <string name="codex_import_empty">На этой машине нет сеансов Codex для импорта</string>
+    <string name="codex_import_no_matches">Нет подходящих сеансов</string>
+    <string name="codex_import_cancel">Отмена</string>
+    <string name="codex_import_confirm">Импортировать и открыть</string>
+    <string name="codex_import_importing">Подключение…</string>
+    <string name="codex_import_load_failed">Не удалось загрузить сеансы Codex</string>
+    <string name="codex_import_failed">Не удалось импортировать сеанс Codex</string>
 </resources>

@@ -75,6 +75,8 @@ class NewSessionStrings(
     val runnerUpgradeRequired: String = "Upgrade and restart this machine's HAPI runner before creating sessions.",
     val noAvailableAgents: String = "No supported Agents are installed on this machine.",
     val selectedAgentUnavailable: String = "The selected Agent is not available on this machine.",
+    val codexHistoryFailed: String = "Failed to load Codex sessions",
+    val codexImportFailed: String = "Failed to import Codex session",
 )
 
 /** Which permission control the current flavor renders (web `PermissionField`). */
@@ -162,6 +164,7 @@ data class NewSessionUiState(
  */
 class NewSessionViewModel(
     private val gateway: NewSessionGateway,
+    importGateway: CodexSessionImportGateway,
     private val machineStore: MachineListStore,
     private val prefs: NewSessionPrefs,
     private val scope: CoroutineScope,
@@ -186,6 +189,25 @@ class NewSessionViewModel(
 
     /** Emits the new session id once — navigate-replace to `chat/{id}`. */
     val spawned: SharedFlow<String> = _spawned.asSharedFlow()
+    val codexImport = CodexSessionImportController(
+        gateway = importGateway,
+        scope = scope,
+        loadFailed = strings.codexHistoryFailed,
+        importFailed = strings.codexImportFailed,
+    ) { machineId, directory, sessionId ->
+        persistOnSuccess(machineId, directory.orEmpty())
+        _spawned.emit(sessionId)
+    }
+
+    fun openCodexImport() {
+        if (spawnInFlight) return
+        val machine = machineStore.machines.value.firstOrNull { it.id == form.value.machineId && it.active } ?: return
+        codexImport.open(
+            machine.id,
+            machine.metadata?.displayName?.takeIf { it.isNotBlank() } ?: machine.metadata?.host ?: machine.id.take(8),
+            form.value.trimmedDirectory,
+        )
+    }
     val directoryBrowser = RemoteDirectoryBrowserController(
         scope = scope,
         listDirectory = gateway::listDirectory,
@@ -314,6 +336,8 @@ class NewSessionViewModel(
     // ------------------------------------------------------------ actions --
 
     fun setMachine(machineId: String) {
+        if (codexImport.state.value.importing) return
+        codexImport.close()
         if (machineId == form.value.machineId) return
         applyMachineSelection(machineId, resetDirectory = true)
     }
@@ -404,6 +428,7 @@ class NewSessionViewModel(
      * it. Success emits [spawned]; failure lands in the inline error.
      */
     fun create() {
+        if (codexImport.state.value.open) return
         val current = form.value
         val machineId = current.machineId ?: return
         if (current.trimmedDirectory.isEmpty() || spawnInFlight) return

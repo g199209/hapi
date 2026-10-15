@@ -612,4 +612,18 @@
     <string name="sessions_group_collapsed">已折叠</string>
     <string name="sessions_search_open">搜索会话</string>
     <string name="sessions_search_close">关闭搜索</string>
+
+    <!-- Existing native Codex sessions -->
+    <string name="codex_import_title">导入已有 Codex session</string>
+    <string name="codex_import_description">接入原 thread，沿用已有 model、reasoning effort 和 permission 设置。</string>
+    <string name="codex_import_refresh">刷新</string>
+    <string name="codex_import_search">搜索 session</string>
+    <string name="codex_import_all_directories">全部目录</string>
+    <string name="codex_import_empty">这台 machine 上没有可导入的 Codex session</string>
+    <string name="codex_import_no_matches">没有匹配的 session</string>
+    <string name="codex_import_cancel">取消</string>
+    <string name="codex_import_confirm">导入并打开</string>
+    <string name="codex_import_importing">正在连接…</string>
+    <string name="codex_import_load_failed">加载 Codex session 失败</string>
+    <string name="codex_import_failed">导入 Codex session 失败</string>
 </resources>

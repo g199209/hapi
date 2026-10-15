@@ -350,6 +350,22 @@ freezes tail following, cancels hidden history loading and recording, and hides
 the keyboard. Returning retains the transcript anchor. Trimmed selections remain
 readable as labeled snapshots; an epoch reset closes obsolete inspectors.
 
+## Import existing Codex sessions
+
+Open **New session**, select the runner machine, then **Import existing Codex
+session** below the machine picker. The history sheet supports search, directory
+filtering and refresh. Select a thread and tap **Import and open** to continue it.
+The list comes from that runner, including remote machines.
+
+Import uses the same Hub endpoints as the WebUI: `/api/codex/sessions`,
+`/api/codex/sync-session`, then `/api/sessions/:id/resume`. It keeps the native
+thread ID and existing model, reasoning effort and permissions; the create
+form's launch settings are not submitted. The app checks the Hub's session
+summaries first and opens a matching active session directly, avoiding a
+transcript re-import while it is running. Failed resume keeps the selection and retries the already
+imported record. The sheet remains open with the server error when a runner
+is offline or the native thread cannot be attached.
+
 ## Read watermarks
 
 Unread dots use the Hub's persisted `lastMessageAt` conversation clock, with

@@ -8,6 +8,9 @@ import app.hapi.protocol.wire.AuthResponse
 import app.hapi.protocol.wire.CancelMessageResponse
 import app.hapi.protocol.wire.RetryIndeterminateMessageResponse
 import app.hapi.protocol.wire.CodexModelsResponse
+import app.hapi.protocol.wire.CodexImportRequest
+import app.hapi.protocol.wire.CodexImportResponse
+import app.hapi.protocol.wire.CodexLocalSessionsResponse
 import app.hapi.protocol.wire.DeleteUploadRequest
 import app.hapi.protocol.wire.DeleteUploadResponse
 import app.hapi.protocol.wire.DenyPermissionRequest
@@ -533,6 +536,15 @@ class HapiApi internal constructor(
      */
     suspend fun getMachineCodexModels(machineId: String): CodexModelsResponse =
         request("GET", url("api", "machines", machineId, "codex-models").build())
+
+    suspend fun getCodexSessions(machineId: String): CodexLocalSessionsResponse =
+        request("GET", url("api", "codex", "sessions").addQueryParameter("machineId", machineId).build())
+
+    suspend fun importCodexSession(machineId: String, nativeSessionId: String): CodexImportResponse =
+        request(
+            "POST", url("api", "codex", "sync-session").build(),
+            CodexImportRequest(machineId, listOf(nativeSessionId)).toJsonBody(),
+        )
 
     // --------------------------------------------------------- git & files --
     // RAW-stdout contract (`docs/api/client-contract/rest.md` "Git & files"):

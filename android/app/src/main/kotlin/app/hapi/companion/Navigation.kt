@@ -49,6 +49,7 @@ import app.hapi.companion.feature.newsession.ApiNewSessionGateway
 import app.hapi.companion.feature.newsession.NewSessionPrefs
 import app.hapi.companion.feature.newsession.NewSessionScreen
 import app.hapi.companion.feature.newsession.NewSessionStrings
+import app.hapi.companion.feature.newsession.ApiCodexSessionImportGateway
 import app.hapi.companion.feature.newsession.NewSessionViewModel
 import app.hapi.companion.feature.pairing.ManualEntryScreen
 import app.hapi.companion.feature.pairing.PairingScreen
@@ -764,6 +765,7 @@ private class NewSessionViewModelHolder(
 
     val viewModel = NewSessionViewModel(
         gateway = ApiNewSessionGateway(hubGraph.session.api),
+        importGateway = ApiCodexSessionImportGateway(hubGraph.session.api),
         machineStore = hubGraph.machineStore,
         prefs = prefs,
         scope = scope,
@@ -857,4 +859,6 @@ private fun newSessionStrings(context: Context) = NewSessionStrings(
     runnerUpgradeRequired = context.getString(R.string.new_session_error_runner_upgrade_required),
     noAvailableAgents = context.getString(R.string.new_session_error_no_available_agents),
     selectedAgentUnavailable = context.getString(R.string.new_session_error_selected_agent_unavailable),
+    codexHistoryFailed = context.getString(R.string.codex_import_load_failed),
+    codexImportFailed = context.getString(R.string.codex_import_failed),
 )
