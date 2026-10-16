@@ -27,6 +27,7 @@ zxingEmbedded = "4.3.0"
 # org.commonmark 0.24.0 (latest, 2024-10) + dev.snipme:highlights 1.0.0 (KMP, jvm variant).
 commonmark = "0.24.0"
 highlights = "1.0.0"
+jlatexmath = "0.2.0"
 # Generated-image loading (B-M2d2). Coil 2.x (stable, OkHttp 4-compatible);
 # Coil 3 is a package rename + engine split — migrate deliberately later.
 coil = "2.7.0"
@@ -70,6 +71,8 @@ commonmark = { group = "org.commonmark", name = "commonmark", version.ref = "com
 commonmark-ext-gfm-tables = { group = "org.commonmark", name = "commonmark-ext-gfm-tables", version.ref = "commonmark" }
 commonmark-ext-gfm-strikethrough = { group = "org.commonmark", name = "commonmark-ext-gfm-strikethrough", version.ref = "commonmark" }
 commonmark-ext-autolink = { group = "org.commonmark", name = "commonmark-ext-autolink", version.ref = "commonmark" }
+jlatexmath = { group = "ru.noties", name = "jlatexmath-android", version.ref = "jlatexmath" }
+jlatexmath-greek = { group = "ru.noties", name = "jlatexmath-android-font-greek", version.ref = "jlatexmath" }
 highlights = { group = "dev.snipme", name = "highlights", version.ref = "highlights" }
 
 # KotlinX

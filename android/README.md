@@ -366,6 +366,20 @@ transcript re-import while it is running. Failed resume keeps the selection and 
 imported record. The sheet remains open with the server error when a runner
 is offline or the native thread cannot be attached.
 
+## Math in Markdown
+
+Chat Markdown renders TeX inline (`$…$`, `\(…\)`) and display math (`$$…$$`,
+`\[…\]`), plus `math`, `latex` and `tex` fences. Formulas use bundled fonts
+and a native renderer. Display equations scroll horizontally at phone widths.
+Code spans/fences and escaped currency remain literal. Unclosed streaming math
+and unsupported TeX remain readable as source.
+
+Long-press a formula to copy its complete TeX. Formula placeholders also
+participate in text selections starting in the surrounding prose. Copying a
+selection restores the original TeX, including delimiters and multiline source,
+alongside surrounding prose. Parsing/compilation happens off the chat UI thread
+with bounded caches; theme and font-scale changes rebuild the sized formulas.
+
 ## Read watermarks
 
 Unread dots use the Hub's persisted `lastMessageAt` conversation clock, with

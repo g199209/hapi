@@ -12,6 +12,7 @@ import org.commonmark.node.ListBlock
 import org.commonmark.node.Node
 import org.commonmark.node.ThematicBreak
 import org.commonmark.parser.Parser
+import org.commonmark.Extension
 
 /**
  * Source-level markdown transforms + parser configuration, ported from the web
@@ -187,13 +188,13 @@ object MarkdownTransforms {
      * tilde is common in shell prompts) + bare-URL autolink, with indented code
      * blocks disabled. Thread-safe and reusable.
      */
-    fun newParser(): Parser = disableIndentedCode(
+    fun newParser(additionalExtensions: List<Extension> = emptyList()): Parser = disableIndentedCode(
         Parser.builder().extensions(
             listOf(
                 TablesExtension.create(),
                 StrikethroughExtension.builder().requireTwoTildes(true).build(),
                 AutolinkExtension.create(),
-            )
+            ) + additionalExtensions
         )
     ).build()
 

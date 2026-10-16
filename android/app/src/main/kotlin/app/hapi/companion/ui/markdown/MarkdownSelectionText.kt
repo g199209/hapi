@@ -15,6 +15,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.InlineTextContent
 
 internal val LocalMarkdownSelectable = staticCompositionLocalOf { false }
 
@@ -28,9 +29,10 @@ internal fun MarkdownSelectionText(
     style: TextStyle = LocalTextStyle.current,
     color: Color = Color.Unspecified,
     softWrap: Boolean = true,
+    inlineContent: Map<String, InlineTextContent> = emptyMap(),
 ) {
     if (suffix.isEmpty()) {
-        Text(text, modifier, color = color, style = style, softWrap = softWrap)
+        Text(text, modifier, color = color, style = style, softWrap = softWrap, inlineContent = inlineContent)
         return
     }
     val copiedText = buildAnnotatedString {
@@ -49,7 +51,10 @@ internal fun MarkdownSelectionText(
     // with the same font/constraints and keep precisely its height.
     val textMeasurer = rememberTextMeasurer()
     val layout = if ('\n' !in suffix) modifier else modifier.clipToBounds().layout { measurable, constraints ->
-        val visible = textMeasurer.measure(text, style, softWrap = softWrap, constraints = constraints)
+        val placeholders = text.getStringAnnotations(MATH_ANNOTATION, 0, text.length).mapNotNull { range ->
+            inlineContent[range.item]?.placeholder?.let { AnnotatedString.Range(it, range.start, range.end) }
+        }
+        val visible = textMeasurer.measure(text, style, softWrap = softWrap, constraints = constraints, placeholders = placeholders)
         // Constrain the Text itself, so the selection registrar sees only
         // visible bounds. Cropping just an outer wrapper leaves the hidden
         // newline's touch area overlapping the following paragraph.
@@ -58,5 +63,5 @@ internal fun MarkdownSelectionText(
             measured.place(0, 0)
         }
     }
-    Text(copiedText, layout, color = color, style = style, softWrap = softWrap)
+    Text(copiedText, layout, color = color, style = style, softWrap = softWrap, inlineContent = inlineContent)
 }

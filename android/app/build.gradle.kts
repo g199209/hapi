@@ -190,6 +190,8 @@ dependencies {
     implementation(libs.commonmark)
     implementation(libs.commonmark.ext.gfm.tables)
     implementation(libs.commonmark.ext.gfm.strikethrough)
+    implementation(libs.jlatexmath)
+    implementation(libs.jlatexmath.greek)
     implementation(libs.highlights)
 
     implementation(platform(libs.androidx.compose.bom))

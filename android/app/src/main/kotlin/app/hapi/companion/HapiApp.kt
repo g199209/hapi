@@ -8,6 +8,7 @@ import androidx.work.Configuration
 import app.hapi.companion.di.AppGraph
 import app.hapi.companion.di.HapiWorkerFactory
 import app.hapi.companion.fcm.NotificationChannels
+import ru.noties.jlatexmath.JLatexMathAndroid
 
 /**
  * Owns the process-singleton [AppGraph]. Compose reads it through
@@ -33,6 +34,7 @@ class HapiApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        JLatexMathAndroid.init(this)
         appGraph = AppGraph(this)
         appGraph.start()
         NotificationChannels.ensureCreated(this)

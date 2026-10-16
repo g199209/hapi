@@ -61,6 +61,9 @@ import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.markdown.HrefDecision
 import app.hapi.protocol.markdown.HrefPolicy
 import app.hapi.protocol.markdown.MarkdownTransforms
+import app.hapi.protocol.markdown.MarkdownMath
+import app.hapi.protocol.markdown.InlineMath
+import app.hapi.protocol.markdown.DisplayMath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
@@ -123,7 +126,8 @@ private val LocalMarkdownPreserveLineBreaks = staticCompositionLocalOf { false }
  * Renders chat markdown with the shared HAPI pipeline: source transforms and
  * parser configuration come from `:core:protocol` ([MarkdownTransforms.parse]:
  * table repair, GFM tables/strikethrough/autolink, indented code disabled),
- * then this walker maps the AST to Compose. Unknown fences (mermaid, math)
+ * then this walker maps the AST to Compose. TeX math renders natively;
+ * unknown fences (such as mermaid)
  * degrade to plain [CodeBlock]s per the v1 plan; html blocks fall back to
  * monospace text.
  */
@@ -158,7 +162,9 @@ fun Markdown(
                 else Text(text)
             }
         }
-        if (selectable) SelectionContainer { body() } else body()
+        MathClipboard(text) {
+            if (selectable) SelectionContainer { body() } else body()
+        }
     }
 }
 
@@ -173,7 +179,7 @@ private val TASK_MARKER = Regex("""^\[([ xX])\]\s+""")
  * can draw a checkbox prefix (the task extension jar is not needed for this).
  */
 internal fun prepareDocument(text: String): ParsedMarkdown {
-    val document = MarkdownTransforms.parse(text)
+    val document = MarkdownMath.parse(text)
     val markers = HashMap<Node, Boolean>()
     var node: Node? = document
     val stack = ArrayDeque<Node>()
@@ -223,12 +229,15 @@ private fun MarkdownBlockChildren(parent: Node, parsed: ParsedMarkdown) {
 @Composable
 private fun MarkdownBlock(node: Node, parsed: ParsedMarkdown) {
     when (node) {
+        is DisplayMath -> MathBlock(node.latex, node.source, selectionSuffix(node), node.closed)
         is Paragraph -> MarkdownInlineText(node)
         is Heading -> MarkdownInlineText(node, style = headingStyle(node.level))
         is BlockQuote -> MarkdownBlockQuote(node, parsed)
         is BulletList -> MarkdownList(node, ordered = false, parsed = parsed)
         is OrderedList -> MarkdownList(node, ordered = true, parsed = parsed)
-        is FencedCodeBlock -> CodeBlock(
+        is FencedCodeBlock -> if (node.info?.trim()?.lowercase() in setOf("math", "latex", "tex")) {
+            MathBlock(node.literal.orEmpty().trimEnd('\n'), "```${node.info}\n${node.literal.orEmpty().trimEnd('\n')}\n```", selectionSuffix(node))
+        } else CodeBlock(
             code = node.literal.orEmpty().trimEnd('\n'),
             language = node.info?.trim()?.takeWhile { !it.isWhitespace() }?.ifEmpty { null },
             selectionSuffix = selectionSuffix(node),
@@ -501,14 +510,17 @@ private fun MarkdownInlineText(
         }
     }
     val preserveLineBreaks = LocalMarkdownPreserveLineBreaks.current
-    val annotated = remember(parent, colors, guardedHandler, preserveLineBreaks) {
+    val math = rememberMathContent(parent, style)
+    val registry = LocalMathCopyRegistry.current
+    val annotated = remember(parent, colors, guardedHandler, preserveLineBreaks, math, registry) {
         buildAnnotatedString {
-            appendInlineChildren(parent, InlineContext(colors, guardedHandler, preserveLineBreaks), insideLink = false)
+            appendInlineChildren(parent, InlineContext(colors, guardedHandler, preserveLineBreaks, math.ids, registry), insideLink = false)
         }
     }
     MarkdownSelectionText(
         text = annotated,
         suffix = suffix,
+        inlineContent = math.content,
         modifier = if (!selectable || annotated.getLinkAnnotations(0, annotated.length).isEmpty()) Modifier else Modifier.pointerInput(press) {
             // Observe before the link's click handler. Leave events untouched so
             // the surrounding SelectionContainer owns long presses and drags.
@@ -533,6 +545,8 @@ private class InlineContext(
     val colors: HapiExtendedColors,
     val handler: MarkdownLinkHandler,
     val preserveLineBreaks: Boolean,
+    val mathIds: Map<Node, String>,
+    val mathRegistry: MathCopyRegistry?,
 ) {
     val linkStyles = TextLinkStyles(
         style = SpanStyle(
@@ -563,6 +577,7 @@ private fun AnnotatedString.Builder.appendInlineChildren(
 
 private fun AnnotatedString.Builder.appendInlineNode(node: Node, ctx: InlineContext, insideLink: Boolean) {
     when (node) {
+        is InlineMath -> appendMath(node, ctx.mathIds, ctx.mathRegistry)
         is MdText -> {
             val literal = node.literal.orEmpty()
             if (insideLink) append(literal) else appendTextWithFilePaths(literal, ctx)
