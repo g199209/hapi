@@ -16,6 +16,16 @@ import kotlin.test.assertTrue
  */
 class SummaryPatchingTest {
 
+    @Test fun historyCapabilitiesAndNativePointsSurviveTypedMetadataDecodeAndProjection() {
+        val metadata = HapiJson.decodeFromString(SessionMetadata.serializer(), """{"path":"/repo","host":"host","capabilities":{"concurrentClients":true,"conversationHistory":{"forkCurrent":true,"forkAtMessage":true,"rewindToMessage":false}},"conversationHistoryPoints":{"native:user:1":true,"stale":false},"conversationHistoryDiverged":true}""")
+        assertEquals(true, metadata.conversationHistoryPoints?.get("native:user:1"))
+        assertEquals(false, metadata.conversationHistoryPoints?.get("stale"))
+        assertEquals(true, metadata.conversationHistoryDiverged)
+        assertEquals(false, metadata.capabilities?.conversationHistory?.rewindToMessage)
+        val roundTrip = HapiJson.decodeFromString(SessionMetadata.serializer(), HapiJson.encodeToString(SessionMetadata.serializer(), metadata))
+        assertEquals(metadata, roundTrip)
+    }
+
     @Test fun previewPatchesUpdateTheListWithoutChangingTitlesOrNeedingDetail() {
         val original = makeSummary(metadata = SessionSummaryMetadata(path = "/repo", name = "Fixed title"))
             .copy(lastMessagePreview = "Old preview")

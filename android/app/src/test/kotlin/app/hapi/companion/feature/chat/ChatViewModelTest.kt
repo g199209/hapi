@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -309,6 +310,8 @@ private class Harness(
     val scope: CoroutineScope = testScope.backgroundScope,
     uiDispatcher: CoroutineDispatcher = StandardTestDispatcher(testScope.testScheduler),
     pipelineDispatcher: CoroutineDispatcher = StandardTestDispatcher(testScope.testScheduler),
+    historyApi: app.hapi.data.api.ConversationHistoryApi? = null,
+    drafts: app.hapi.companion.feature.chat.composer.ChatDrafts? = null,
 ) {
     val sessionStore = FakeSessionStore().apply { detailToLoad = detailSession() }
     val lastSeenStore = LastSeenStore(scope)
@@ -331,6 +334,8 @@ private class Harness(
         scope = scope,
         pipelineDispatcher = pipelineDispatcher,
         uiDispatcher = uiDispatcher,
+        historyApi = historyApi,
+        drafts = drafts,
     )
 }
 
@@ -338,6 +343,67 @@ private class Harness(
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
+    @Test
+    fun `rewind response replaces old window and epoch without relying on SSE`() = runTest {
+        val api = FakeMessagesApi()
+        val boundary = agentMessage("hub-user", 2, 200, "unused").copy(localId = "local", invokedAt = app.hapi.protocol.wire.OptionalField.Present(200),
+            content = buildJsonObject { put("role", "user"); putJsonObject("content") { put("type", "text"); put("text", "prompt") } })
+        api.tailResponses += MessagesResponse(listOf(agentMessage("kept", 1, 100, "kept"), boundary, agentMessage("removed", 3, 300, "removed")), page("latest", false))
+        var mutations = 0
+        val historyApi = object : app.hapi.data.api.ConversationHistoryApi {
+            override suspend fun forkConversation(sessionId: String, messageLocalId: String?) = error("Unexpected fork")
+            override suspend fun rewindConversation(sessionId: String, messageLocalId: String) {
+                assertEquals("local", messageLocalId); mutations++
+                api.tailResponses += MessagesResponse(listOf(agentMessage("kept", 1, 100, "kept")), page("latest", false).copy(epoch = 5, reset = true))
+            }
+        }
+        val harness = Harness(this, ScriptedTransport(listOf("ok")), api = api, historyApi = historyApi)
+        harness.sessionStore.detailToLoad = detailSession().copy(metadata = app.hapi.protocol.wire.SessionMetadata("/repo", "host",
+            capabilities = app.hapi.protocol.wire.SessionCapabilities(conversationHistory = app.hapi.protocol.wire.ConversationHistoryCapabilities(true, true, true)),
+            conversationHistoryPoints = mapOf("local" to true)))
+        harness.viewModel.start()
+        harness.viewModel.uiState.first { it.historyAvailability.ready }
+        harness.viewModel.setComposerText("保留 draft")
+        harness.viewModel.history.request(app.hapi.companion.feature.chat.history.HistoryKind.RewindBefore, "local")
+        harness.viewModel.history.confirm(); runCurrent()
+        harness.viewModel.uiState.first { it.blocks.size == 1 && (it.blocks.single() as? AgentTextBlock)?.text == "kept" }
+        assertEquals(1, mutations)
+        assertEquals(5L, harness.messageWindows.open(SESSION_ID).state.value.epoch)
+        assertEquals("保留 draft", harness.viewModel.composerEditor.text.toString())
+    }
+
+    @Test
+    fun `fork emits independent navigation without seeding full source history or moving draft`() = runTest {
+        val api = FakeMessagesApi().apply { tailResponses += MessagesResponse(listOf(agentMessage("source-only", 1, 100, "source")), page("latest", false)) }
+        val historyApi = object : app.hapi.data.api.ConversationHistoryApi {
+            override suspend fun forkConversation(sessionId: String, messageLocalId: String?) = app.hapi.data.api.ForkConversationResponse("child")
+            override suspend fun rewindConversation(sessionId: String, messageLocalId: String) = error("Unexpected rewind")
+        }
+        val drafts = object : app.hapi.companion.feature.chat.composer.ChatDrafts {
+            val values = mutableMapOf<String, String>()
+            override suspend fun load(sessionId: String) = values[sessionId]
+            override suspend fun save(sessionId: String, text: String) { values[sessionId] = text }
+            override suspend fun clear(sessionId: String) { values.remove(sessionId) }
+            override suspend fun move(fromSessionId: String, toSessionId: String) { error("Fork must not move drafts") }
+        }
+        val harness = Harness(this, ScriptedTransport(listOf("ok")), api = api, historyApi = historyApi, drafts = drafts)
+        harness.sessionStore.detailToLoad = detailSession().copy(metadata = app.hapi.protocol.wire.SessionMetadata("/repo", "host",
+            capabilities = app.hapi.protocol.wire.SessionCapabilities(conversationHistory = app.hapi.protocol.wire.ConversationHistoryCapabilities(forkCurrent = true))))
+        val effects = mutableListOf<ChatEvent>()
+        backgroundScope.launch { harness.viewModel.events.collect { effects += it } }
+        harness.viewModel.start(); harness.viewModel.uiState.first { it.historyAvailability.ready }
+        harness.viewModel.setComposerText("原 session draft")
+        harness.viewModel.history.request(app.hapi.companion.feature.chat.history.HistoryKind.ForkCurrent)
+        harness.viewModel.history.confirm(); runCurrent()
+        assertTrue(effects.isEmpty())
+        assertEquals("child", harness.viewModel.history.state.value.forkedSessionId)
+        harness.viewModel.history.acknowledgeFork("child")
+        assertNull(harness.viewModel.history.state.value.forkedSessionId)
+        assertEquals("原 session draft", harness.viewModel.composerEditor.text.toString())
+        assertNull(harness.messageWindows.peek("child"))
+        assertEquals(listOf("source-only"), harness.messageWindows.open(SESSION_ID).state.value.messages.map { it.id })
+    }
+
     @Test
     fun `header follows detail activity and cleared requests rather than stale list badges`() = runTest {
         val harness = Harness(this, ScriptedTransport(listOf("ok")))

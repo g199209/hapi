@@ -113,8 +113,14 @@ send it automatically. See [Voice input and assistant](./voice-assistant.md).
 ### Features available through the web
 
 Use the web app for the remote terminal, Work Graph, realtime dictation and
-voice assistant, session fork/rewind/export, and the skills picker. These have
-no native UI. Session history actions also depend on the agent's capabilities.
+voice assistant, and full session export. Android provides session Fork/Rewind
+according to agent capabilities: Fork session is in the chat menu; Fork/Rewind
+below an eligible user message target the point before that message. Shared
+Codex supports Fork, with Rewind disabled. Both actions ask for confirmation;
+Rewind removes later conversation history while leaving workspace files intact.
+iOS uses the web for these history actions and for the skills picker. Android
+provides `$` skills and `@` file/session suggestions, plus Dictation provider
+configuration and machine display names in Settings.
 Native apps display existing scheduled messages but do not provide a form to
 create scheduled sends. Android's full-text file export is a reader action,
 separate from exporting an entire session.

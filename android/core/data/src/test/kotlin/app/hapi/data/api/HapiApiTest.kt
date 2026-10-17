@@ -61,6 +61,42 @@ class HapiApiTest {
     private fun lastRequestBody() = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
 
     @Test
+    fun `history actions send only hub local id and decode the returned child`() = runBlocking {
+        server.enqueue(ok("""{"sessionId":"child"}"""))
+        assertEquals("child", session.api.forkConversation("source/1").sessionId)
+        val current = server.takeRequest()
+        assertEquals("/api/sessions/source%2F1/fork", current.path)
+        assertEquals("POST", current.method)
+        assertTrue(Json.parseToJsonElement(current.body.readUtf8()).jsonObject.isEmpty())
+        server.enqueue(ok("""{"sessionId":"historical-child"}"""))
+        assertEquals("historical-child", session.api.forkConversation("source/1", "codex:user:local").sessionId)
+        val historical = server.takeRequest()
+        assertEquals("codex:user:local", Json.parseToJsonElement(historical.body.readUtf8()).jsonObject["messageLocalId"]!!.jsonPrimitive.content)
+        server.enqueue(ok("""{"success":true}"""))
+        session.api.rewindConversation("source/1", "local")
+        val rewind = server.takeRequest()
+        assertEquals("/api/sessions/source%2F1/rewind", rewind.path)
+        assertEquals(setOf("messageLocalId"), Json.parseToJsonElement(rewind.body.readUtf8()).jsonObject.keys)
+    }
+
+    @Test
+    fun `history conflicts retain fallback and hydrate error details and false success is rejected`() = runBlocking {
+        server.enqueue(ok("""{"error":"ambiguous","code":"ambiguous_native_boundary_fork_safe","hydrateFailed":false}""").setResponseCode(409))
+        val conflict = assertFailsWith<ApiError> { session.api.rewindConversation("s", "local") }
+        assertEquals("ambiguous_native_boundary_fork_safe", conflict.code)
+        assertEquals(409, conflict.status)
+        server.takeRequest()
+        server.enqueue(ok("""{"error":"unknown","hydrateFailed":true}""").setResponseCode(500))
+        val unknown = assertFailsWith<ApiError> { session.api.rewindConversation("s", "local") }
+        assertTrue(unknown.body!!.contains("hydrateFailed"))
+        server.takeRequest()
+        server.enqueue(ok("""{"success":false}"""))
+        assertFailsWith<IllegalStateException> { session.api.rewindConversation("s", "local") }
+        server.takeRequest()
+        Unit
+    }
+
+    @Test
     fun `dictation settings use owner API masked status and partial update`() = runBlocking {
         server.enqueue(ok("""{"openai":{"configured":true,"source":"env","hint":"••••1234","editable":false},"openaiCompatible":{"configured":false,"source":"none","baseUrl":null,"model":null,"baseUrlEditable":true,"modelEditable":true,"apiKey":{"configured":false,"source":"none","hint":null,"editable":true}},"voiceBackends":{"geminiLive":{"configured":false}}}"""))
         val status = session.api.getTranscriptionCredentials()

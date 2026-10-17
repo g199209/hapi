@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_fork">Fork</string>
+    <string name="history_rewind">Rewind</string>
+    <string name="history_fork_current">Fork 当前 session</string>
+    <string name="history_fork_before_title">Fork 到这条消息之前？</string>
+    <string name="history_fork_before_body">创建包含这条消息之前 history 的独立 session，保留原 session 和 draft。</string>
+    <string name="history_fork_current_body">从当前 history 创建独立 session，保留原 session 和 draft。</string>
+    <string name="history_rewind_title">Rewind 到这条消息之前？</string>
+    <string name="history_rewind_body">这条消息及之后的 history 将被永久移除。Workspace 文件保持当前内容。</string>
+    <string name="history_fallback_title">无法执行 Rewind</string>
+    <string name="history_fallback_body">Native history boundary 存在歧义，HAPI 没有执行 Rewind。是否改为 Fork 到这条消息之前？</string>
+    <string name="history_refresh_title">刷新 conversation history</string>
+    <string name="history_refresh_body">需要从 Hub 重新读取 history 才能继续；刷新不会再次提交 Rewind。</string>
+    <string name="history_refresh">刷新 history</string>
+    <string name="history_working">处理中…</string>
+    <string name="history_stale">Session 状态已改变，请关闭后重新选择操作。</string>
+    <string name="history_failed">History 操作失败</string>
+</resources>

@@ -133,6 +133,30 @@ class MessageWindowStoreTest {
 
     // ------------------------------------------------------------ tail sync --
 
+    @Test
+    fun `history reset poisons older requests and reloads authoritative epoch without resurrecting removed rows`() = runTest {
+        val stale = kotlinx.coroutines.CompletableDeferred<MessagesResponse>()
+        var latestCount = 0
+        val api = object : MessagesApi {
+            override suspend fun getMessages(sessionId: String, query: MessagesQuery): MessagesResponse {
+                if (query is MessagesQuery.After) return stale.await()
+                return if (++latestCount == 1) latestPage(listOf(agentRow("kept", 1, 100), agentRow("removed", 2, 200)), 1)
+                    else latestPage(listOf(agentRow("kept", 1, 100)), 2)
+            }
+            override suspend fun getQueuedState(sessionId: String, localIds: List<String>) = QueuedStateResponse(queuedLocalIds = emptyList(), invokedLocalMessages = emptyList())
+        }
+        val store = MessageWindowStore("s", api, backgroundScope)
+        store.syncTail()
+        val previous = backgroundScope.launch { store.syncTail() }
+        runCurrent()
+        store.clear()
+        store.syncTail()
+        stale.complete(afterPage(listOf(agentRow("removed", 2, 200)), 1, 200L to 2L, false))
+        previous.join()
+        assertEquals(listOf("kept"), store.state.value.messages.map { it.id })
+        assertEquals(2L, store.state.value.epoch)
+    }
+
     @Test fun `native history retains 800 rows across SSE and preserves policy on clear`() = runTest {
         val initial = MessageWindowState(
             sessionId = "history", viewMode = MessageViewMode.History, epoch = 1,

@@ -345,6 +345,10 @@ fun HapiNavigation() {
                         popUpTo(Routes.CHAT) { inclusive = true }
                     }
                 },
+                onForkedSession = { childId ->
+                    // All chats share a destination id: singleTop would replace the source arguments.
+                    navController.navigate(Routes.chat(childId))
+                },
                 dictation = holder.dictation,
                 pickers = holder.pickers,
                 onOpenFiles = { navController.navigate(Routes.files(sessionId)) },

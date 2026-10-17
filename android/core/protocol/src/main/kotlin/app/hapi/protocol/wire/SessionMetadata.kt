@@ -28,6 +28,8 @@ data class SessionMetadata(
     val lifecycleState: String? = null,
     val worktree: WorktreeMetadata? = null,
     val capabilities: SessionCapabilities? = null,
+    val conversationHistoryPoints: Map<String, Boolean>? = null,
+    val conversationHistoryDiverged: Boolean? = null,
     /** Loopback MCP URL when the session's CLI happy server is running. */
     val hapiMcpUrl: String? = null,
     val slashCommands: List<String>? = null,

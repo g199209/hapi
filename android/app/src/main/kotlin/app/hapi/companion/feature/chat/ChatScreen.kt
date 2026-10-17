@@ -111,6 +111,7 @@ internal fun ChatScreen(
     readingState: TranscriptReadingState = rememberTranscriptReadingState(viewModel.sessionId),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val historyState by viewModel.history.state.collectAsState()
     val reconnecting by viewModel.reconnecting.collectAsState()
     val historyPaging by viewModel.historyPaging.collectAsState()
     val jumpToken by viewModel.jumpToken.collectAsState()
@@ -301,6 +302,10 @@ internal fun ChatScreen(
                         onOpenFiles = onOpenFiles,
                         scratchlistCount = scratchlistCount,
                         onOpenScratchlist = if (viewModel.scratchlistEnabled) onOpenScratchlist else null,
+                        onForkCurrent = if (state.historyAvailability.forkCurrent) {
+                            { viewModel.history.request(app.hapi.companion.feature.chat.history.HistoryKind.ForkCurrent) }
+                        } else null,
+                        historyEnabled = state.historyAvailability.ready && !historyState.pending,
                         onRename = { renameDialogOpen = true },
                         onReopen = viewModel::reopenSession,
                         onDelete = { deleteDialogOpen = true },
@@ -368,6 +373,9 @@ internal fun ChatScreen(
         CompositionLocalProvider(
             LocalMarkdownRenderCache provides viewModel.markdownCache,
             LocalChatMedia provides media,
+            app.hapi.companion.feature.chat.history.LocalConversationHistory provides remember(state.historyAvailability, historyState.pending, viewModel) {
+                app.hapi.companion.feature.chat.history.HistoryInteractions(state.historyAvailability, historyState.pending, viewModel.history::request)
+            },
             LocalMarkdownLinkHandler provides rememberChatLinkHandler(onOpenFile = onOpenFile),
             LocalChatInteractions provides interactions,
         ) {
@@ -433,6 +441,9 @@ internal fun ChatScreen(
             onDismiss = { renameDialogOpen = false },
         )
     }
+    app.hapi.companion.feature.chat.history.ConversationHistoryDialog(
+        historyState, viewModel.history::confirm, viewModel.history::confirmFallback, viewModel.history::dismiss,
+    )
     if (deleteDialogOpen) {
         DeleteSessionDialog(
             sessionTitle = state.header.title,
@@ -453,6 +464,8 @@ internal fun ChatScreen(
 @Composable
 private fun SessionOverflowMenu(
     active: Boolean,
+    onForkCurrent: (() -> Unit)? = null,
+    historyEnabled: Boolean = false,
     onRename: () -> Unit,
     onReopen: () -> Unit,
     onDelete: () -> Unit,
@@ -469,6 +482,10 @@ private fun SessionOverflowMenu(
         Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.chat_session_actions))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        onForkCurrent?.let { fork ->
+            DropdownMenuItem(text = { Text(stringResource(R.string.history_fork_current)) }, enabled = historyEnabled,
+                onClick = { open = false; fork() })
+        }
         DropdownMenuItem(
             text = { Text(stringResource(R.string.chat_open_files)) },
             leadingIcon = { Icon(FolderGlyph, contentDescription = null) },

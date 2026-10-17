@@ -49,6 +49,7 @@ internal fun ChatHost(
     onOpenFiles: () -> Unit,
     onOpenFile: (String, Int?) -> Unit,
     onOpenScratchlist: (() -> Unit)?,
+    onForkedSession: (String) -> Unit = onNavigateToSession,
 ) {
     val navigation = rememberNavController()
     val entry by navigation.currentBackStackEntryAsState()
@@ -62,6 +63,16 @@ internal fun ChatHost(
     val latestKeyboard by rememberUpdatedState(keyboard)
     val latestBack by rememberUpdatedState(onBack)
     val latestNavigate by rememberUpdatedState(onNavigateToSession)
+    val latestForked by rememberUpdatedState(onForkedSession)
+    val historyState by viewModel.history.state.collectAsState()
+    LaunchedEffect(historyState.forkedSessionId) {
+        historyState.forkedSessionId?.let { child ->
+            latestDictation?.cancel()
+            latestKeyboard?.hide()
+            latestForked(child)
+            viewModel.history.acknowledgeFork(child)
+        }
+    }
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
 

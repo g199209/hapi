@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_fork">Fork</string>
+    <string name="history_rewind">Rewind</string>
+    <string name="history_fork_current">Fork session</string>
+    <string name="history_fork_before_title">Fork до этого сообщения?</string>
+    <string name="history_fork_before_body">Создать отдельный session с history до этого сообщения. Исходный session и draft сохраняются.</string>
+    <string name="history_fork_current_body">Создать отдельный session из текущей history. Исходный session и draft сохраняются.</string>
+    <string name="history_rewind_title">Rewind до этого сообщения?</string>
+    <string name="history_rewind_body">Это навсегда удалит это сообщение и всю последующую history. Файлы workspace сохранят текущее содержимое.</string>
+    <string name="history_fallback_title">Rewind недоступен</string>
+    <string name="history_fallback_body">Native history boundary неоднозначна. HAPI не выполнил Rewind. Сделать Fork до этого сообщения?</string>
+    <string name="history_refresh_title">Обновить conversation history</string>
+    <string name="history_refresh_body">Для продолжения нужно перечитать history из Hub. Обновление не отправит повторный Rewind.</string>
+    <string name="history_refresh">Обновить history</string>
+    <string name="history_working">Выполняется…</string>
+    <string name="history_stale">Состояние session изменилось. Закройте окно и выберите действие заново.</string>
+    <string name="history_failed">Ошибка действия history</string>
+</resources>

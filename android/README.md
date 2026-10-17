@@ -308,6 +308,29 @@ Out of scope on purpose: `:core:protocol` presentation strings
 (`getEventPresentation`, tool-group activity titles) stay English — the web
 does not translate them either, and terminology parity with the web wins.
 
+## Fork and Rewind
+
+Conversation history actions follow `metadata.capabilities.conversationHistory`
+and the Hub's `conversationHistoryPoints` catalog. **Session actions → Fork session**
+creates an independent session from current history. Eligible invoked user messages
+show **Fork** / **Rewind** below the bubble; these target the point **before** that
+message, using its Hub `localId`. Text long-press remains text selection.
+
+Actions require an active idle session without queued messages; legacy terminal
+control and diverged history also disable them. Shared Codex advertises Fork current
+and Fork at message, with Rewind disabled. Reading older pages still permits
+historical actions after the window trims its tail.
+
+A confirmation dialog retains the chosen point outside recycled rows and across
+rotation, then rechecks capabilities, native locators and epoch before submitting.
+Fork opens the returned child with its own history/draft, preserving the original
+chat on Back. The full source window is never seeded into a historical child.
+Rewind removes the chosen message and later conversation history; workspace files
+keep their current contents. It reloads the authoritative window and epoch even
+when SSE is silent, preserving the composer draft. Completed or uncertain rewinds
+retry reconciliation only, not the mutation. An ambiguous native boundary offers
+an explicit Fork confirmation when that capability remains available.
+
 ## Tool previews
 
 Ordinary chat tools stay compact summaries. Tap a tool or tool group to open a native

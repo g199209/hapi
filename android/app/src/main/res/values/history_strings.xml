@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_fork">Fork</string>
+    <string name="history_rewind">Rewind</string>
+    <string name="history_fork_current">Fork session</string>
+    <string name="history_fork_before_title">Fork before this message?</string>
+    <string name="history_fork_before_body">Create an independent session containing the conversation before this message. The original session and draft are preserved.</string>
+    <string name="history_fork_current_body">Create an independent session from the current conversation history. The original session and draft are preserved.</string>
+    <string name="history_rewind_title">Rewind before this message?</string>
+    <string name="history_rewind_body">This removes this message and all later conversation history permanently. Workspace files keep their current contents.</string>
+    <string name="history_fallback_title">Rewind unavailable</string>
+    <string name="history_fallback_body">The native history boundary is ambiguous. HAPI did not rewind this session. Fork before this message instead?</string>
+    <string name="history_refresh_title">Refresh conversation history</string>
+    <string name="history_refresh_body">The rewind result needs reconciliation. Refresh from the Hub before continuing; this does not submit another rewind.</string>
+    <string name="history_refresh">Refresh history</string>
+    <string name="history_working">Working…</string>
+    <string name="history_stale">The session changed. Close this dialog and choose the history action again.</string>
+    <string name="history_failed">History action failed</string>
+</resources>

@@ -156,6 +156,7 @@ data class ChatUiState(
     val messagesVersion: Long = 0,
     val requiresLatestReset: Boolean = false,
     val processSteps: Map<String, Int> = emptyMap(),
+    val historyAvailability: app.hapi.companion.feature.chat.history.HistoryAvailability = app.hapi.companion.feature.chat.history.HistoryAvailability(),
 )
 
 /** Composer bar state (M3a). */
@@ -347,6 +348,7 @@ class ChatViewModel(
     private val localIdGenerator: () -> String = { "local-${UUID.randomUUID()}" },
     /** Serialized UI event loop; JVM tests inject their UI dispatcher. */
     private val uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val historyApi: app.hapi.data.api.ConversationHistoryApi? = api as? app.hapi.data.api.ConversationHistoryApi,
 ) {
     // The holder's scope is a Default worker scope, NOT the coordinator's
     // executor. Share its lifetime, but serialize all history/lifecycle state
@@ -460,6 +462,41 @@ class ChatViewModel(
 
     /** One-shot effects: renavigation on supersede, snackbar notices. */
     val events: SharedFlow<ChatEvent> = _events.asSharedFlow()
+
+    val history = app.hapi.companion.feature.chat.history.ConversationHistoryController(
+        sessionId = sessionId, api = historyApi, context = { currentHistoryContext() },
+        refresh = { refreshConversationHistory() },
+        onForked = { sessionStore.scheduleRefresh() },
+        scope = uiScope,
+    )
+
+    private fun currentHistoryContext(): app.hapi.companion.feature.chat.history.HistoryContext =
+        app.hapi.companion.feature.chat.history.historyContext(
+            currentDetail(), windowStore.value?.state?.value,
+            blocked = historyApi == null || sendInFlight.value || configOpPending.value || sessionOpPending.value || queuedOpPending.value ||
+                (sessionStore.sessions.value.firstOrNull { it.id == sessionId }?.futureScheduledMessageCount ?: 0) > 0,
+        )
+
+    /** Both the success response and an uncertain rewind require authoritative history. */
+    private suspend fun refreshConversationHistory() {
+        cancelHistory()
+        historyDemand = false
+        val store = awaitWindowStore()
+        withContext(workerContext) {
+            store.clear()
+            // A failed detail refresh must not prevent fetching the authoritative transcript.
+            val detailResult = try {
+                Result.success(sessionStore.loadSessionDetail(sessionId))
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (failure: Exception) { Result.failure(failure) }
+            store.syncTail(ensureAfterCurrent = true)
+            sessionStore.scheduleRefresh()
+            detailResult.getOrThrow()
+        }
+        store.state.value.warning?.let { error(it) }
+        mutableJumpingLatest.value = false
+        jumpToLatest()
+    }
 
     // Pipeline memo state — touched only inside the single uiState map stage.
     private val normalizeCache = HashMap<String, NormalizeCacheEntry>()
@@ -956,7 +993,7 @@ class ChatViewModel(
      * Text may be empty when attachments exist (wire: text OR attachments).
      */
     fun sendMessage(steer: Boolean = false) {
-        if (sendInFlight.value) return
+        if (sendInFlight.value || history.state.value.pending) return
         if (attachments.hasUnsettled()) {
             _events.tryEmit(ChatEvent.Notice(ChatNotice.AttachmentsUploading))
             return
@@ -1009,7 +1046,7 @@ class ChatViewModel(
 
     /** Tap-to-retry on a failed optimistic row: re-fires the send with the same localId. */
     fun retryFailedMessage(localId: String) {
-        if (sendInFlight.value) return
+        if (sendInFlight.value || history.state.value.pending) return
         scope.launch {
             val store = awaitWindowStore()
             val row = store.state.value.messages
@@ -1902,6 +1939,7 @@ class ChatViewModel(
         return ChatUiState(
             sessionId = sessionId,
             header = buildHeader(inputs),
+            historyAvailability = currentHistoryContext().availability,
             flavor = inputs.detail?.metadata?.flavor ?: inputs.summary?.metadata?.flavor,
             basePath = inputs.detail?.metadata?.path ?: inputs.summary?.metadata?.path,
             blocks = transcriptProjection.project(visibleBlocks),

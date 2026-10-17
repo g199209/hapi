@@ -87,6 +87,7 @@ fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
                         }
                     }
                 }
+                app.hapi.companion.feature.chat.history.MessageHistoryActions(block)
                 if (block.status == "failed") {
                     val interactions = LocalChatInteractions.current
                     val retryLocalId = block.localId

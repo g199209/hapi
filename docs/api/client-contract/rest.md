@@ -60,7 +60,7 @@ Source: `hub/src/web/routes/sessions.ts`; request schemas in `shared/src/apiType
 Both endpoints return the id of the session that now carries the conversation — which **may differ from the id you called them on** (fresh spawn under a new id; the old row is superseded). Clients must migrate composer drafts and replace navigation to the returned id. Reference: `web/src/routes/sessions/followSupersedingSession.ts`; the durable link also appears as `metadata.supersededBySessionId` on the old session.
 :::
 
-Additional session APIs without a current native UI: `POST /api/sessions/:id/fork` `{messageLocalId?}` → `{sessionId}`, `POST /api/sessions/:id/rewind` `{messageLocalId}` → `{success: true}`, `GET /api/sessions/:id/export` (413 when too large). Availability also depends on session history capabilities.
+Android exposes `POST /api/sessions/:id/fork` `{messageLocalId?}` → `{sessionId}` and `POST /api/sessions/:id/rewind` `{messageLocalId}` → `{success: true}` according to advertised history capabilities and native points. Historical actions target the point before the supplied user message. iOS uses the web for these actions. `GET /api/sessions/:id/export` (413 when too large) still has no native UI.
 
 ### Messages
 

@@ -119,7 +119,7 @@ class HapiApi internal constructor(
     private val client: OkHttpClient,
     private val imageClient: OkHttpClient = client,
     private val authClient: OkHttpClient = client,
-) : ChatSessionApi {
+) : ChatSessionApi, ConversationHistoryApi {
     /** Public production entry point: cleartext hub origins are rejected. */
     constructor(
         hubUrl: String,
@@ -282,6 +282,17 @@ class HapiApi internal constructor(
             url("api", "sessions", sessionId, "messages", "queued-state").build(),
             QueuedStateRequest(localIds).toJsonBody(),
         )
+
+    override suspend fun forkConversation(sessionId: String, messageLocalId: String?): ForkConversationResponse =
+        request("POST", url("api", "sessions", sessionId, "fork").build(), jsonBody(buildJsonObject {
+            messageLocalId?.let { put("messageLocalId", it) }
+        }))
+
+    override suspend fun rewindConversation(sessionId: String, messageLocalId: String) {
+        val result: RewindConversationResponse = request("POST", url("api", "sessions", sessionId, "rewind").build(),
+            jsonBody(buildJsonObject { put("messageLocalId", messageLocalId) }))
+        check(result.success) { "Rewind was not accepted" }
+    }
 
     /** `POST /api/sessions/:id/clear` — shared sessions; returns an independent root. */
     override suspend fun clearConversation(sessionId: String): ResumeSessionResponse =
