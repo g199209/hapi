@@ -435,6 +435,7 @@ class SessionStore(
             val summary = SummaryPatching.toSessionSummary(session).copy(
                 futureScheduledMessageCount = existing?.futureScheduledMessageCount ?: 0,
                 nextScheduledAt = existing?.nextScheduledAt,
+                hasConversationContent = session.hasConversationContent ?: existing?.hasConversationContent,
             )
             val next = list.toMutableList()
             if (index >= 0) next[index] = summary else next.add(summary)

@@ -170,6 +170,23 @@ private fun TestScope.buildViewModel(
 
 class SessionListViewModelTest {
     @Test
+    fun `mark unread follows message clock survives maintenance and clears when opened`() = runTest {
+        val sessions = FakeSessionStore()
+        val lastSeen = LastSeenStore(backgroundScope)
+        val vm = SessionListViewModel(sessions, FakeMachineStore(), lastSeen, backgroundScope)
+        sessions.set(summary("s", updatedAt = 1000).copy(lastMessageAt = 500))
+        vm.start(); runCurrent()
+        assertFalse(vm.uiState.value.rows.single().unread)
+        vm.markUnread("s"); runCurrent()
+        assertTrue(vm.uiState.value.rows.single().unread)
+        sessions.set(summary("s", updatedAt = 9000).copy(lastMessageAt = 500)); runCurrent()
+        assertTrue(vm.uiState.value.rows.single().unread)
+        vm.onSessionOpened("s"); runCurrent()
+        assertFalse(vm.uiState.value.rows.single().unread)
+        assertEquals(500L, lastSeen.lastSeenAt("s"))
+    }
+
+    @Test
     fun `directory grouping preserves pin and pending-request priority ahead of recency`() = runTest {
         val (vm, store, _) = buildViewModel()
         store.set(

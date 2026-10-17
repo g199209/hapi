@@ -18,12 +18,14 @@ namespace. See the [native app guide](../docs/guide/native-apps.md) for platform
 differences, pairing and features currently available through the web.
 
 - **Session actions:** pin/archive plus Rename, Delete and explicit Reopen
-  from the list/chat actions. Delete requires an inactive session. Resume or
+  from the list/chat actions. The list action sheet also offers local, persisted
+  **Mark unread** and **Copy session reference** using the WebUI citation grammar.
+  Opening the session clears its manual unread marker. Delete requires an inactive session. Resume or
   Reopen can return another session ID: seed its window, move the draft and
   replace navigation with the returned ID.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Slash suggestions combine session
-  metadata and the slash-command RPC; the skills `$` picker has no UI.
+  metadata and the slash-command RPC. Caret-aware `@` suggestions include same-hub sessions with conversation content and Codex/Copilot workspace files; `$` suggests runner skills. Selection replaces only the active token and preserves surrounding text. IME composition suspends suggestions; stale responses cannot edit the buffer.
 - Composer editing uses a holder-owned `TextFieldState`: IME text, selection and
   composition update synchronously. Derived toolbar/draft flows never write text
   back to the field; send and exit read the editing buffer directly. Native
@@ -33,10 +35,19 @@ differences, pairing and features currently available through the web.
   `standard`-capable provider. The microphone stays hidden until one is
   available. First use requests `RECORD_AUDIO`; `MediaRecorder` records
   m4a/AAC, multipart transcription inserts text into the draft without sending.
+  **Settings → Voice → Dictation** lets the hub owner configure OpenAI,
+  ElevenLabs, Deepgram, Groq or an OpenAI-compatible endpoint. Only masked key
+  status is loaded; blank keys preserve existing values and explicit Clear sends
+  nulls for editable fields. Environment-managed fields stay read-only. Config is
+  stored on the Hub and shared with WebUI; reopen chat to refresh discovery.
   `DictationController` is tested with recorder/API fakes.
 - **Background actions:** FCM permission Allow/Deny and inline Reply enqueue
   WorkManager jobs. Workers resolve paired hubs using stored credentials,
   without requiring a foreground `HubGraph`. Firebase-free builds skip push.
+
+**Settings → Machines** lists the connected runners and edits their display names
+(up to 64 characters; blank restores hostname). Updates use the existing Hub API
+and flow through the shared machine store/SSE into session filters and new sessions.
 
 ## Building
 

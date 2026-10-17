@@ -595,6 +595,12 @@ class HapiApi internal constructor(
         return request("GET", target.build())
     }
 
+    suspend fun getTranscriptionCredentials(): app.hapi.protocol.wire.TranscriptionCredentials =
+        request("GET", url("api", "voice", "transcription", "credentials").build())
+
+    suspend fun updateTranscriptionCredentials(update: kotlinx.serialization.json.JsonObject): app.hapi.protocol.wire.TranscriptionCredentials =
+        request("PUT", url("api", "voice", "transcription", "credentials").build(), jsonBody(update))
+
     // ---------------------------------------------------------- visibility --
 
     /**

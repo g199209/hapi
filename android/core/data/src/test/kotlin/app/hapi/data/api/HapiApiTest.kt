@@ -61,6 +61,41 @@ class HapiApiTest {
     private fun lastRequestBody() = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
 
     @Test
+    fun `dictation settings use owner API masked status and partial update`() = runBlocking {
+        server.enqueue(ok("""{"openai":{"configured":true,"source":"env","hint":"••••1234","editable":false},"openaiCompatible":{"configured":false,"source":"none","baseUrl":null,"model":null,"baseUrlEditable":true,"modelEditable":true,"apiKey":{"configured":false,"source":"none","hint":null,"editable":true}},"voiceBackends":{"geminiLive":{"configured":false}}}"""))
+        val status = session.api.getTranscriptionCredentials()
+        assertTrue(status.openai.configured)
+        assertFalse(status.openai.editable)
+        assertEquals("••••1234", status.openai.hint)
+        assertEquals("/api/voice/transcription/credentials", server.takeRequest().path)
+        server.enqueue(ok("""{"groq":{"configured":true,"source":"settings","hint":"••••test","editable":true}}"""))
+        val updated = session.api.updateTranscriptionCredentials(buildJsonObject { put("groq", "test-key") })
+        assertTrue(updated.groq.configured)
+        val req = server.takeRequest()
+        assertEquals("PUT", req.method)
+        assertEquals("/api/voice/transcription/credentials", req.path)
+        assertEquals(setOf("groq"), Json.parseToJsonElement(req.body.readUtf8()).jsonObject.keys)
+    }
+
+    @Test
+    fun `machine rename and suggestion RPC use escaped session identifiers`() = runBlocking {
+        server.enqueue(ok("""{"ok":true}"""))
+        session.api.renameMachine("remote 2", "量化节点")
+        val rename = server.takeRequest()
+        assertEquals("PATCH", rename.method)
+        assertEquals("/api/machines/remote%202", rename.path)
+        assertEquals("量化节点", Json.parseToJsonElement(rename.body.readUtf8()).jsonObject["displayName"]!!.jsonPrimitive.content)
+        server.enqueue(ok("""{"success":false,"error":"Runner offline"}"""))
+        assertFalse(session.api.getSkills("s/1").success)
+        assertEquals("/api/sessions/s%2F1/skills", server.takeRequest().path)
+        server.enqueue(ok("""{"success":true,"files":[]}"""))
+        session.api.searchSessionFiles("s/1", "中文 path", 50)
+        val req = server.takeRequest()
+        assertEquals("中文 path", req.requestUrl!!.queryParameter("query"))
+        assertEquals("50", req.requestUrl!!.queryParameter("limit"))
+    }
+
+    @Test
     fun `Codex history selects explicit remote machine and import preserves native options`() = runBlocking {
         server.enqueue(ok("""{"success":true,"machineId":"remote 2","sessions":[{"id":"native1","title":"中文 session","modifiedAt":1791980000000.6921,"cwd":"/home/project","file":"rollout.jsonl","lastUserMessage":null}]}"""))
         val history = session.api.getCodexSessions("remote 2")

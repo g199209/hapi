@@ -166,6 +166,7 @@ object SummaryPatching {
         active = session.active,
         thinking = session.thinking,
         lastMessagePreview = session.lastMessagePreview,
+        hasConversationContent = session.hasConversationContent,
         lastMessageAt = session.lastMessageAt,
         activeAt = session.activeAt,
         updatedAt = session.updatedAt,
@@ -311,6 +312,7 @@ object SummaryPatching {
     fun isRenderIrrelevantPatch(current: SessionSummary, next: SessionSummary): Boolean {
         return current.active == next.active
             && current.thinking == next.thinking
+            && current.hasConversationContent == next.hasConversationContent
             && current.lastMessagePreview == next.lastMessagePreview
             && current.lastMessageAt == next.lastMessageAt
             && current.updatedAt == next.updatedAt

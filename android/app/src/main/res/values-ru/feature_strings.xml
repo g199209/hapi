@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_title">Voice</string>
+    <string name="voice_dictation">Диктовка</string>
+    <string name="voice_settings_summary">Настроить провайдеров транскрипции на этом Hub</string>
+    <string name="voice_intro">Запишите речь, остановите запись и отредактируйте текст перед отправкой. Настройки общие с WebUI. Android использует первый доступный standard provider.</string>
+    <string name="voice_providers">Провайдеры транскрипции</string>
+    <string name="voice_configured">Настроено</string>
+    <string name="voice_not_configured">Не настроено</string>
+    <string name="voice_api_key_hint">Введите API key</string>
+    <string name="voice_keep_key">Оставьте пустым, чтобы сохранить текущий key.</string>
+    <string name="voice_env_locked">Поля, заданные environment Hub, доступны только для чтения.</string>
+    <string name="voice_saved">Сохранено. Откройте чат заново, чтобы обновить доступность диктовки.</string>
+    <string name="voice_save">Сохранить</string>
+    <string name="voice_clear">Очистить настройки</string>
+    <string name="voice_clear_confirm">Очистить сохранённые настройки %1$s на этом Hub?</string>
+    <string name="settings_machines">Machines</string>
+    <string name="machines_refresh">Обновить</string>
+    <string name="machines_intro">Нажмите на machine, чтобы изменить display name. Имена общие с WebUI.</string>
+    <string name="machines_empty">Нет подключённых machines</string>
+    <string name="machines_rename">Переименовать machine</string>
+    <string name="machines_name">Display name</string>
+    <string name="machines_name_hint">До 64 символов. Пустое поле восстанавливает hostname.</string>
+    <string name="sessions_action_mark_unread">Пометить непрочитанным</string>
+    <string name="sessions_action_copy_reference">Копировать session reference</string>
+    <string name="composer_no_matches">Нет совпадений</string>
+    <string name="feature_cancel">Отмена</string>
+</resources>

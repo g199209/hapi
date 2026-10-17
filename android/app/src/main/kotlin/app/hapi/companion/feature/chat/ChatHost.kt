@@ -45,6 +45,7 @@ internal fun ChatHost(
     onBack: () -> Unit,
     onNavigateToSession: (String) -> Unit,
     dictation: DictationController?,
+    pickers: app.hapi.companion.feature.chat.composer.ComposerPickers? = null,
     onOpenFiles: () -> Unit,
     onOpenFile: (String, Int?) -> Unit,
     onOpenScratchlist: (() -> Unit)?,
@@ -130,7 +131,7 @@ internal fun ChatHost(
                 composable("thread") {
                     ChatScreen(
                         viewModel, media, onBack, snackbarHostState = snackbar,
-                        dictation = dictation, onOpenFiles = { pauseReading(); onOpenFiles() }, onOpenFile = openFile,
+                        dictation = dictation, pickers = pickers, onOpenFiles = { pauseReading(); onOpenFiles() }, onOpenFile = openFile,
                         onOpenScratchlist = onOpenScratchlist?.let { open -> { pauseReading(); open() } },
                         transcriptList = transcriptList, readingState = reading,
                     )

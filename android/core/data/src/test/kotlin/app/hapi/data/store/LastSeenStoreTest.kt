@@ -10,6 +10,35 @@ import kotlinx.coroutines.test.runTest
 class LastSeenStoreTest {
 
     @Test
+    fun `manual unread persists cold load and is cleared by opening conversation`() = runTest {
+        val dir = Files.createTempDirectory("manual-unread").toFile()
+        val store = LastSeenStore(backgroundScope, dir)
+        store.initializeBaseline("hub", listOf(summary("s", updatedAt = 1000)))
+        store.markUnread("s", 1000)
+        store.flushPersistence()
+        val restored = LastSeenStore(backgroundScope, dir)
+        assertEquals(1000L, restored.state.value.manualUnread["s"])
+        restored.initializeBaseline("hub", listOf(summary("s", updatedAt = 9000)))
+        assertEquals(999L, restored.lastSeenAt("s"))
+        restored.markSeen("s", 900)
+        assertTrue("s" in restored.state.value.manualUnread)
+        restored.markSeen("s", 1000)
+        assertFalse("s" in restored.state.value.manualUnread)
+        assertFalse(LastSeenStore.isUnread(summary("s", updatedAt = 1000), restored.lastSeenAt("s")))
+    }
+
+    @Test
+    fun `manual unread is local to the hub and works for a zero message clock`() = runTest {
+        val one = LastSeenStore(backgroundScope)
+        val other = LastSeenStore(backgroundScope)
+        one.markUnread("empty", 0)
+        assertEquals(0L, one.state.value.manualUnread["empty"])
+        assertTrue(other.state.value.manualUnread.isEmpty())
+        one.markSeen("empty", 0)
+        assertTrue(one.state.value.manualUnread.isEmpty())
+    }
+
+    @Test
     fun `maintenance metadata never makes seen conversation unread and old watermarks survive`() = runTest {
         val store = LastSeenStore(backgroundScope)
         store.markSeen("s1", 2_000)

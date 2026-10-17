@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_title">Voice</string>
+    <string name="voice_dictation">Dictation</string>
+    <string name="voice_settings_summary">配置当前 Hub 的 transcription providers</string>
+    <string name="voice_intro">录音停止后，transcript 会填入输入框，编辑后再发送。配置与 WebUI 共享；Android 使用第一个可用的 standard provider。</string>
+    <string name="voice_providers">Transcription providers</string>
+    <string name="voice_configured">已配置</string>
+    <string name="voice_not_configured">未配置</string>
+    <string name="voice_api_key_hint">输入 API key</string>
+    <string name="voice_keep_key">留空保留已保存的 key。</string>
+    <string name="voice_env_locked">Hub environment 配置的字段为只读。</string>
+    <string name="voice_saved">已保存。重新进入 chat 后会刷新 Dictation 状态。</string>
+    <string name="voice_save">保存</string>
+    <string name="voice_clear">清除配置</string>
+    <string name="voice_clear_confirm">清除当前 Hub 上保存的 %1$s 配置？</string>
+    <string name="settings_machines">Machines</string>
+    <string name="machines_refresh">刷新</string>
+    <string name="machines_intro">点击 machine 修改 display name，与 WebUI 共享。</string>
+    <string name="machines_empty">没有已连接的 machine</string>
+    <string name="machines_rename">重命名 machine</string>
+    <string name="machines_name">Display name</string>
+    <string name="machines_name_hint">最多 64 个字符。留空恢复 hostname。</string>
+    <string name="sessions_action_mark_unread">标记为未读</string>
+    <string name="sessions_action_copy_reference">复制 session reference</string>
+    <string name="composer_no_matches">没有匹配项</string>
+    <string name="feature_cancel">取消</string>
+</resources>

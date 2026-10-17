@@ -96,6 +96,8 @@ fun ChatComposer(
     onAddAttachment: (() -> Unit)? = null,
     onAttachmentRetry: (String) -> Unit = {},
     onAttachmentRemove: (String) -> Unit = {},
+    pickerState: PickerUi = PickerUi(),
+    onPick: (ComposerPick) -> Unit = {},
     slashSuggestions: List<SlashCommand> = emptyList(),
     onSlashCommandSelected: (SlashCommand) -> Unit = {},
     /** null ⇒ dictation unavailable (no controller wired) — mic button hidden. */
@@ -120,7 +122,9 @@ fun ChatComposer(
     }
     Surface(color = MaterialTheme.colorScheme.surface, modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(vertical = 8.dp)) {
-            if (slashSuggestions.isNotEmpty()) {
+            if (pickerState.token != null) {
+                ComposerPickerDropdown(pickerState, onPick, Modifier.padding(bottom = 6.dp))
+            } else if (slashSuggestions.isNotEmpty()) {
                 SlashCommandDropdown(
                     suggestions = slashSuggestions,
                     onSelect = onSlashCommandSelected,
@@ -719,6 +723,26 @@ private fun SlashDropdownComposerPreview() {
                     SlashCommand(name = "code-review", description = null, source = "project"),
                 ),
             )
+        }
+    }
+}
+
+@Composable
+private fun ComposerPickerDropdown(state: PickerUi, onPick: (ComposerPick) -> Unit, modifier: Modifier = Modifier) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp), tonalElevation = 2.dp, modifier = modifier.fillMaxWidth()) {
+        LazyColumn(modifier = Modifier.heightIn(max = 240.dp)) {
+            if (state.loading) item { androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            state.error?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(12.dp)) } }
+            if (!state.loading && state.items.isEmpty() && state.error == null) item {
+                Text(stringResource(app.hapi.companion.R.string.composer_no_matches), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+            }
+            items(state.items, key = { it.key }) { item ->
+                Column(Modifier.fillMaxWidth().combinedClickable(onClick = { onPick(item) }).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(item.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    item.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.hapi.hint, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHighest)
+            }
         }
     }
 }

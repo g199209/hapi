@@ -13,6 +13,7 @@ data class SessionSummary(
     val id: String,
     val active: Boolean,
     val lastMessagePreview: String? = null,
+    val hasConversationContent: Boolean? = null,
     val thinking: Boolean = false,
     val activeAt: Long = 0,
     val updatedAt: Long = 0,

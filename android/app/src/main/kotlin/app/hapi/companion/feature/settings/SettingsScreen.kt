@@ -55,6 +55,8 @@ fun SettingsScreen(
     onOpenUsage: () -> Unit,
     onOpenStorage: () -> Unit,
     onBack: () -> Unit,
+    onOpenVoice: () -> Unit = {},
+    onOpenMachines: () -> Unit = {},
 ) {
     val theme by viewModel.themeSettings.collectAsState()
     val language by viewModel.language.collectAsState()
@@ -114,6 +116,15 @@ fun SettingsScreen(
                     value = languageLabel(language),
                     onClick = { showLanguageDialog = true },
                 )
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_machines)) {
+                SettingsRow(label = stringResource(R.string.settings_machines), onClick = onOpenMachines)
+            }
+            if (isOwner) {
+                SettingsSection(title = stringResource(R.string.voice_title)) {
+                    SettingsRow(label = stringResource(R.string.voice_dictation), description = stringResource(R.string.voice_settings_summary), onClick = onOpenVoice)
+                }
             }
 
             if (isOwner) {

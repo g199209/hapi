@@ -100,6 +100,7 @@ internal fun ChatScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     /** null ⇒ mic button hidden (tests / previews without a controller). */
     dictation: DictationController? = null,
+    pickers: app.hapi.companion.feature.chat.composer.ComposerPickers? = null,
     /** Top-bar folder icon → session files browser (B-M4c). */
     onOpenFiles: () -> Unit = {},
     /** Markdown file citations → file viewer (full mode; optional line hint). */
@@ -180,6 +181,14 @@ internal fun ChatScreen(
         }
     }
     val slashSuggestions by viewModel.slashSuggestions.collectAsState()
+    val pickerState = pickers?.state?.collectAsState()?.value ?: app.hapi.companion.feature.chat.composer.PickerUi()
+    LaunchedEffect(pickers, viewModel, state.flavor) {
+        val editor = viewModel.composerEditor
+        androidx.compose.runtime.snapshotFlow {
+            app.hapi.companion.feature.chat.composer.pickerToken(editor.text.toString(), editor.selection.start, editor.selection.end, editor.composition != null)
+        }.collect { pickers?.update(it, state.flavor) }
+    }
+    DisposableEffect(pickers) { onDispose { pickers?.update(null, null) } }
 
     // --------------------------------------------------------- attachments --
     val attachmentItems by viewModel.attachments.items.collectAsState()
@@ -339,6 +348,13 @@ internal fun ChatScreen(
                         onAddAttachment = { attachmentSheetOpen = true },
                         onAttachmentRetry = viewModel.attachments::retry,
                         onAttachmentRemove = viewModel.attachments::remove,
+                        pickerState = pickerState,
+                        onPick = { item ->
+                            if (app.hapi.companion.feature.chat.composer.applyComposerPick(viewModel.composerEditor, pickerState, item)) {
+                                viewModel.onComposerEdited()
+                                pickers?.selected(item)
+                            }
+                        },
                         slashSuggestions = slashSuggestions,
                         onSlashCommandSelected = viewModel::selectSlashCommand,
                         dictation = if (dictationAvailable) dictationState else null,

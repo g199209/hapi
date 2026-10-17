@@ -138,6 +138,8 @@ object Routes {
 
     /** Settings scaffold + owner-only dashboards (B-M4e). */
     const val SETTINGS = "settings"
+    const val SETTINGS_VOICE = "settings/voice"
+    const val SETTINGS_MACHINES = "settings/machines"
     const val SETTINGS_USAGE = "settings/usage"
     const val SETTINGS_STORAGE = "settings/storage"
 }
@@ -159,7 +161,7 @@ internal fun ObserveActiveHubNavigation(navController: NavHostController, active
             }
         } else if (hubChanged &&
             navController.currentDestination?.route in
-                setOf(Routes.CHAT, Routes.FILES, Routes.FILE_VIEWER, Routes.SCRATCHLIST)
+                setOf(Routes.CHAT, Routes.FILES, Routes.FILE_VIEWER, Routes.SCRATCHLIST, Routes.SETTINGS_VOICE, Routes.SETTINGS_MACHINES)
         ) {
             navController.popBackStack(Routes.HOME, inclusive = false)
         }
@@ -261,10 +263,23 @@ fun HapiNavigation() {
             )
             SettingsScreen(
                 viewModel = holder.viewModel,
+                onOpenVoice = { navController.navigate(Routes.SETTINGS_VOICE) },
+                onOpenMachines = { navController.navigate(Routes.SETTINGS_MACHINES) },
                 onOpenUsage = { navController.navigate(Routes.SETTINGS_USAGE) },
                 onOpenStorage = { navController.navigate(Routes.SETTINGS_STORAGE) },
                 onBack = { navController.popBackStack() },
             )
+        }
+
+        composable(Routes.SETTINGS_VOICE) {
+            val hubGraph = activeHubGraph ?: return@composable
+            val holder = viewModel<VoiceSettingsHolder>(key = "voice:${hubGraph.hubUrl}", factory = viewModelFactory { VoiceSettingsHolder(hubGraph) })
+            app.hapi.companion.feature.settings.voice.VoiceSettingsScreen(holder.model) { navController.popBackStack() }
+        }
+        composable(Routes.SETTINGS_MACHINES) {
+            val hubGraph = activeHubGraph ?: return@composable
+            val holder = viewModel<MachinesSettingsHolder>(key = "machines:${hubGraph.hubUrl}", factory = viewModelFactory { MachinesSettingsHolder(hubGraph) })
+            app.hapi.companion.feature.settings.MachinesSettingsScreen(holder.model) { navController.popBackStack() }
         }
 
         composable(Routes.SETTINGS_USAGE) {
@@ -331,6 +346,7 @@ fun HapiNavigation() {
                     }
                 },
                 dictation = holder.dictation,
+                pickers = holder.pickers,
                 onOpenFiles = { navController.navigate(Routes.files(sessionId)) },
                 onOpenFile = { path, line ->
                     // Chat citations open full mode; the cited line renders as
@@ -615,6 +631,11 @@ private class ChatViewModelHolder(
      * Holder-scoped so a recording survives rotation; [onCleared] discards
      * any take still open when the screen goes away for good.
      */
+    val pickers = app.hapi.companion.feature.chat.composer.ComposerPickers(
+        sessionId, app.hapi.companion.feature.chat.composer.HapiComposerPickerApi(hubGraph.session.api, sessionId),
+        hubGraph.sessionStore, hubGraph.machineStore, CoroutineScope(scope.coroutineContext + Dispatchers.Main),
+    )
+
     val dictation = DictationController(
         api = HapiDictationApi(hubGraph.session.api),
         recorder = MediaRecorderDictation(appContext),
@@ -862,3 +883,16 @@ private fun newSessionStrings(context: Context) = NewSessionStrings(
     codexHistoryFailed = context.getString(R.string.codex_import_load_failed),
     codexImportFailed = context.getString(R.string.codex_import_failed),
 )
+
+private class VoiceSettingsHolder(graph: HubGraph) : ViewModel() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    val model = app.hapi.companion.feature.settings.voice.VoiceSettingsViewModel(
+        app.hapi.companion.feature.settings.voice.ApiVoiceSettingsGateway(graph.session.api), scope,
+    )
+    override fun onCleared() { scope.cancel() }
+}
+private class MachinesSettingsHolder(graph: HubGraph) : ViewModel() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    val model = app.hapi.companion.feature.settings.MachinesSettingsViewModel(graph.machineStore, graph.session.api::renameMachine, scope)
+    override fun onCleared() { scope.cancel() }
+}

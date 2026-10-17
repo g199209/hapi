@@ -13,6 +13,7 @@ import kotlinx.serialization.Serializable
 data class LastSeenState(
     val lastSeen: Map<String, Long> = emptyMap(),
     val baselines: Set<String> = emptySet(),
+    val manualUnread: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -56,9 +57,22 @@ class LastSeenStore(
         updateState { state ->
             val current = state.lastSeen[sessionId] ?: 0
             val next = maxOf(current, seenAt)
-            if (next == current && state.lastSeen.containsKey(sessionId)) state
-            else state.copy(lastSeen = state.lastSeen + (sessionId to next))
+            val clearManual = state.manualUnread[sessionId]?.let { next >= it } == true
+            if (next == current && state.lastSeen.containsKey(sessionId) && !clearManual) state
+            else state.copy(
+                lastSeen = state.lastSeen + (sessionId to next),
+                manualUnread = if (clearManual) state.manualUnread - sessionId else state.manualUnread,
+            )
         }
+    }
+
+    /** Explicit local unread marker; separate from the monotonic read watermark. */
+    fun markUnread(sessionId: String, messageAt: Long) {
+        if (sessionId.isEmpty()) return
+        updateState { state -> state.copy(
+            lastSeen = state.lastSeen + (sessionId to minOf(state.lastSeen[sessionId] ?: 0, messageAt - 1)),
+            manualUnread = state.manualUnread + (sessionId to messageAt),
+        ) }
     }
 
     /**

@@ -160,6 +160,7 @@ class SessionListViewModel(
             sessions = sessions,
             machines = machines,
             lastSeen = lastSeen.lastSeen,
+            manualUnread = lastSeen.manualUnread,
             filter = filter,
             archived = archived,
             content = content,
@@ -255,6 +256,11 @@ class SessionListViewModel(
         lastSeenStore.markSeen(sessionId, summary.unreadAt)
     }
 
+    fun markUnread(sessionId: String) {
+        val summary = sessionStore.sessions.value.firstOrNull { it.id == sessionId } ?: return
+        lastSeenStore.markUnread(sessionId, summary.unreadAt)
+    }
+
     /** `PUT /sessions/:id/pin` with optimistic re-sort; failures surface on [errors]. */
     fun setPinMode(sessionId: String, mode: PinMode) {
         scope.launch {
@@ -341,6 +347,7 @@ class SessionListViewModel(
         sessions: List<SessionSummary>,
         machines: List<Machine>,
         lastSeen: Map<String, Long>,
+        manualUnread: Map<String, Long>,
         filter: String?,
         archived: Boolean,
         content: SessionListFilter,
@@ -411,7 +418,7 @@ class SessionListViewModel(
                     summary.metadata?.worktree?.let { add(it.name.ifBlank { it.branch }) }
                 }.takeIf { it.isNotEmpty() }?.joinToString(" · "),
                 flavor = summary.metadata?.flavor,
-                unread = LastSeenStore.isUnread(summary, lastSeen[summary.id] ?: 0),
+                unread = summary.id in manualUnread || LastSeenStore.isUnread(summary, lastSeen[summary.id] ?: 0),
                 machine = if (showMachine) filters.find { it.id == (summary.metadata?.machineId ?: UNKNOWN_MACHINE_ID) } else null,
             )
         }

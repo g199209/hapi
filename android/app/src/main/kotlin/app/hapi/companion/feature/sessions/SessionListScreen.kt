@@ -119,6 +119,7 @@ fun SessionListScreen(
         onDispose { viewModel.stop() }
     }
 
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = LocalContext.current
     LaunchedEffect(viewModel, context) {
         viewModel.errors.collect { error ->
@@ -228,6 +229,11 @@ fun SessionListScreen(
         SessionActionsSheet(
             row = row,
             onDismiss = { sheetRow = null },
+            onMarkUnread = { viewModel.markUnread(row.id); sheetRow = null },
+            onCopyReference = {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(app.hapi.companion.feature.chat.composer.sessionReference(row.title, row.id)))
+                sheetRow = null
+            },
             onSetPinMode = { mode ->
                 viewModel.setPinMode(row.id, mode)
                 sheetRow = null
@@ -585,9 +591,11 @@ private fun EmptyState(hasLoaded: Boolean, isOffline: Boolean, archived: Boolean
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SessionActionsSheet(
+internal fun SessionActionsSheet(
     row: SessionRowUi,
     onDismiss: () -> Unit,
+    onMarkUnread: () -> Unit,
+    onCopyReference: () -> Unit,
     onSetPinMode: (PinMode) -> Unit,
     onArchive: () -> Unit,
     onRename: () -> Unit,
@@ -613,6 +621,8 @@ private fun SessionActionsSheet(
         if (summary.globalPinned != true) {
             SheetAction(stringResource(R.string.sessions_action_pin_global)) { onSetPinMode(PinMode.Global) }
         }
+        SheetAction(stringResource(R.string.sessions_action_mark_unread), onClick = onMarkUnread)
+        SheetAction(stringResource(R.string.sessions_action_copy_reference), onClick = onCopyReference)
         SheetAction(stringResource(R.string.sessions_action_rename), onClick = onRename)
         if (!summary.active) {
             SheetAction(stringResource(R.string.sessions_action_reopen), onClick = onReopen)
