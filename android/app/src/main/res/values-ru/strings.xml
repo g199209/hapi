@@ -619,4 +619,11 @@
     <string name="codex_import_importing">Подключение…</string>
     <string name="codex_import_load_failed">Не удалось загрузить сеансы Codex</string>
     <string name="codex_import_failed">Не удалось импортировать сеанс Codex</string>
+
+    <!-- Mermaid diagrams -->
+    <string name="mermaid_diagram">Диаграмма</string>
+    <string name="mermaid_source">Исходник</string>
+    <string name="mermaid_fullscreen">Открыть диаграмму на весь экран</string>
+    <string name="mermaid_close">Закрыть диаграмму</string>
+    <string name="mermaid_error">Не удалось отобразить диаграмму</string>
 </resources>

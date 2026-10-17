@@ -380,6 +380,25 @@ selection restores the original TeX, including delimiters and multiline source,
 alongside surrounding prose. Parsing/compilation happens off the chat UI thread
 with bounded caches; theme and font-scale changes rebuild the sized formulas.
 
+## Mermaid diagrams
+
+`mermaid` fences render as diagrams using the packaged Mermaid 11.14.0 engine.
+Inline diagrams scroll horizontally at a readable scale; tap one or use the
+fullscreen action to open a pinch-zoom/pan viewer. **Source** toggles the original
+code, and the existing copy/export action keeps its exact contents.
+
+The isolated WebView loads only the APK's script, with no Hub credentials,
+external resource loading, file access or navigation. Diagram source is encoded
+outside HTML syntax. Source/theme-keyed SVG caching avoids repeated compilation;
+source edits are debounced and late callbacks from released views are ignored.
+Invalid or incomplete diagrams keep readable source and recover on code updates.
+
+The standalone distribution and license notices are checked in under
+`app/src/main/assets/mermaid`. After a frozen repo dependency install, regenerate
+them with `node android/scripts/vendor-mermaid.mjs` from the repo root. The script
+checks the pinned version and records its SHA256; Android Gradle builds do not
+require Node/Bun or an external diagram service.
+
 ## Read watermarks
 
 Unread dots use the Hub's persisted `lastMessageAt` conversation clock, with

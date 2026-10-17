@@ -127,7 +127,7 @@ private val LocalMarkdownPreserveLineBreaks = staticCompositionLocalOf { false }
  * parser configuration come from `:core:protocol` ([MarkdownTransforms.parse]:
  * table repair, GFM tables/strikethrough/autolink, indented code disabled),
  * then this walker maps the AST to Compose. TeX math renders natively;
- * unknown fences (such as mermaid)
+ * Mermaid diagrams render in their own offline viewer; unknown fences
  * degrade to plain [CodeBlock]s per the v1 plan; html blocks fall back to
  * monospace text.
  */
@@ -235,7 +235,9 @@ private fun MarkdownBlock(node: Node, parsed: ParsedMarkdown) {
         is BlockQuote -> MarkdownBlockQuote(node, parsed)
         is BulletList -> MarkdownList(node, ordered = false, parsed = parsed)
         is OrderedList -> MarkdownList(node, ordered = true, parsed = parsed)
-        is FencedCodeBlock -> if (node.info?.trim()?.lowercase() in setOf("math", "latex", "tex")) {
+        is FencedCodeBlock -> if (node.info?.trim()?.takeWhile { !it.isWhitespace() }?.lowercase() == "mermaid") {
+            MermaidBlock(node.literal.orEmpty().trimEnd('\n'), selectionSuffix(node))
+        } else if (node.info?.trim()?.lowercase() in setOf("math", "latex", "tex")) {
             MathBlock(node.literal.orEmpty().trimEnd('\n'), "```${node.info}\n${node.literal.orEmpty().trimEnd('\n')}\n```", selectionSuffix(node))
         } else CodeBlock(
             code = node.literal.orEmpty().trimEnd('\n'),

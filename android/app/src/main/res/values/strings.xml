@@ -619,4 +619,11 @@
     <string name="codex_import_importing">Connecting…</string>
     <string name="codex_import_load_failed">Failed to load Codex sessions</string>
     <string name="codex_import_failed">Failed to import Codex session</string>
+
+    <!-- Mermaid diagrams -->
+    <string name="mermaid_diagram">Diagram</string>
+    <string name="mermaid_source">Source</string>
+    <string name="mermaid_fullscreen">Open diagram full screen</string>
+    <string name="mermaid_close">Close diagram</string>
+    <string name="mermaid_error">Could not render diagram</string>
 </resources>

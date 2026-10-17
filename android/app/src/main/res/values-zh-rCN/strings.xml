@@ -626,4 +626,11 @@
     <string name="codex_import_importing">正在连接…</string>
     <string name="codex_import_load_failed">加载 Codex session 失败</string>
     <string name="codex_import_failed">导入 Codex session 失败</string>
+
+    <!-- Mermaid diagrams -->
+    <string name="mermaid_diagram">图表</string>
+    <string name="mermaid_source">源码</string>
+    <string name="mermaid_fullscreen">全屏查看图表</string>
+    <string name="mermaid_close">关闭图表</string>
+    <string name="mermaid_error">无法渲染图表</string>
 </resources>
