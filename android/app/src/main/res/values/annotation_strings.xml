@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_add">Comment</string>
+    <string name="annotation_edit">Edit comment</string>
+    <string name="annotation_remove">Remove</string>
+    <string name="annotation_comment">Comment (optional)</string>
+    <string name="annotation_save">Save</string>
+    <string name="annotation_cancel">Cancel</string>
+    <string name="annotation_more">Show quote</string>
+    <string name="annotation_less">Collapse quote</string>
+</resources>

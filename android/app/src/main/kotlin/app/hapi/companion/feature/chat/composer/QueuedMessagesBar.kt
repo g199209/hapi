@@ -91,7 +91,7 @@ private fun QueuedRow(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = row.text.ifEmpty { row.attachmentNames.joinToString(", ") },
+                    text = app.hapi.companion.feature.chat.annotations.ResponseAnnotations.displayPrompt(row.text).ifEmpty { row.attachmentNames.joinToString(", ") },
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

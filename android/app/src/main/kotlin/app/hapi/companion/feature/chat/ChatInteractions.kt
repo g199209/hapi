@@ -22,6 +22,7 @@ data class ChatInteractions(
     val codexPlanActions: CodexPlanActions = CodexPlanActions(),
     val implementCodexPlan: (planId: String) -> Unit = {},
     val continueCodexPlan: (planId: String) -> Unit = {},
+    val commentOnResponse: ((text: String, messageId: String?) -> Unit)? = null,
 )
 
 /** Dynamic local: override churn invalidates readers only, not the whole tree. */

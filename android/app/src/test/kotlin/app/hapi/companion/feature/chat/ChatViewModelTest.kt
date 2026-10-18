@@ -343,6 +343,58 @@ private class Harness(
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
+    @Test fun `annotation-only send captures request once and retry preserves envelope`() = runTest {
+        val sent = mutableListOf<SendMessageRequest>()
+        var fail = true
+        val api = object : FakeMessagesApi() {
+            override suspend fun sendMessage(sessionId: String, message: SendMessageRequest) {
+                sent += message
+                if (fail) throw RuntimeException("offline")
+            }
+        }
+        val harness = Harness(this, ScriptedTransport(listOf("ok")), api = api)
+        harness.viewModel.start(); runCurrent()
+        val vm = harness.viewModel
+        vm.annotations.request("中文 quote", "msg_native"); vm.annotations.updateComment("修一下"); vm.annotations.confirm()
+        runCurrent()
+        assertTrue(vm.composer.value.hasAnnotations)
+        vm.sendMessage(); runCurrent()
+        assertEquals(1, sent.size)
+        assertTrue(vm.annotations.items.value.isEmpty())
+        val parsed = app.hapi.companion.feature.chat.annotations.ResponseAnnotations.parse(sent.single().text)!!
+        assertEquals("", parsed.request)
+        assertEquals("修一下", parsed.annotations.single().annotation)
+        fail = false
+        vm.retryFailedMessage(sent.single().localId!!); runCurrent()
+        assertEquals(2, sent.size)
+        assertEquals(sent.first(), sent.last())
+    }
+
+    @Test fun `annotation drafts persist restore and survive source window reset`() = runTest {
+        var saved: String? = null
+        val drafts = object : app.hapi.companion.feature.chat.composer.ChatDrafts {
+            override suspend fun load(sessionId: String) = saved
+            override suspend fun save(sessionId: String, text: String) { saved = text }
+            override suspend fun clear(sessionId: String) { saved = null }
+            override suspend fun move(fromSessionId: String, toSessionId: String) = Unit
+        }
+        val first = Harness(this, ScriptedTransport(listOf("ok")), drafts = drafts)
+        first.viewModel.start(); runCurrent()
+        first.viewModel.setComposerText("额外请求")
+        first.viewModel.annotations.request("source quote", "msg_1"); first.viewModel.annotations.confirm()
+        testScheduler.advanceTimeBy(500); runCurrent()
+        assertEquals("额外请求", app.hapi.companion.feature.chat.annotations.ResponseAnnotations.parse(saved!!)!!.request)
+        val second = Harness(this, ScriptedTransport(listOf("ok")), drafts = drafts)
+        second.viewModel.start(); runCurrent()
+        assertEquals("额外请求", second.viewModel.composerEditor.text.toString())
+        assertEquals("source quote", second.viewModel.annotations.items.value.single().value.text)
+        second.messageWindows.clear(SESSION_ID)
+        assertEquals("source quote", second.viewModel.annotations.items.value.single().value.text)
+        second.viewModel.annotations.remove(second.viewModel.annotations.items.value.single().id)
+        testScheduler.advanceTimeBy(500); runCurrent()
+        assertEquals("额外请求", saved)
+    }
+
     @Test
     fun `rewind response replaces old window and epoch without relying on SSE`() = runTest {
         val api = FakeMessagesApi()

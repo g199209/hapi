@@ -51,7 +51,9 @@ import app.hapi.protocol.chat.UserTextBlock
  */
 @Composable
 fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
-    val preview = remember(block.text) { messagePreview(block.text) }
+    val annotated = remember(block.text) { app.hapi.companion.feature.chat.annotations.ResponseAnnotations.parse(block.text) }
+    val request = annotated?.request ?: block.text
+    val preview = remember(request) { messagePreview(request) }
     val inspection = LocalChatInspection.current
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val maxBubbleWidth = maxWidth * 0.85f
@@ -65,13 +67,16 @@ fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
                     modifier = Modifier.widthIn(max = maxBubbleWidth),
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Markdown(
+                        annotated?.annotations?.forEachIndexed { index, value ->
+                            app.hapi.companion.feature.chat.annotations.AnnotationCard(value, index, Modifier.padding(bottom = 6.dp))
+                        }
+                        if (preview.text.isNotBlank()) Markdown(
                             text = preview.text,
                             textStyle = HapiTypography.body,
                             selectable = true,
                             preserveLineBreaks = true,
                         )
-                        if (preview.end < block.text.length) {
+                        if (preview.end < request.length) {
                             TextButton(onClick = { inspection?.openMessage(block.id) }, enabled = inspection != null) {
                                 Text(stringResource(R.string.chat_view_full_message))
                             }

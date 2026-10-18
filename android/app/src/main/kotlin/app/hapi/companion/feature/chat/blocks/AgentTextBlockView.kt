@@ -40,7 +40,11 @@ import app.hapi.protocol.chat.reasoningPreview
 /** Assistant prose: full-width markdown (the shared M2d1 renderer). */
 @Composable
 fun AgentTextBlockView(block: AgentTextBlock, modifier: Modifier = Modifier) {
-    Markdown(text = block.text, modifier = modifier.fillMaxWidth(), selectable = true)
+    val comments = app.hapi.companion.feature.chat.LocalChatInteractions.current?.commentOnResponse
+    val text = androidx.compose.runtime.remember(block.text) { app.hapi.companion.feature.chat.annotations.ResponseAnnotations.displayReply(block.text) }
+    app.hapi.companion.feature.chat.annotations.CommentSelection(
+        onComment = comments?.let { callback -> { quote -> callback(quote, app.hapi.companion.feature.chat.annotations.ResponseAnnotations.nativeMessageId(block.id)) } },
+    ) { Markdown(text = text, modifier = modifier.fillMaxWidth(), selectable = true) }
 }
 
 /**

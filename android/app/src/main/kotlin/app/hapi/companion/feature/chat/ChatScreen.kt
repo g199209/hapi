@@ -275,6 +275,7 @@ internal fun ChatScreen(
             codexPlanActions = codexPlanActions,
             implementCodexPlan = viewModel::implementCodexPlan,
             continueCodexPlan = viewModel::continueCodexPlan,
+            commentOnResponse = viewModel.annotations::request,
         )
     }
 
@@ -349,6 +350,7 @@ internal fun ChatScreen(
                         onSend = { viewModel.sendMessage() },
                         onSendSteer = { viewModel.sendMessage(steer = true) },
                         onAbort = viewModel::abortSession,
+                        annotations = viewModel.annotations,
                         attachments = attachmentItems,
                         onAddAttachment = { attachmentSheetOpen = true },
                         onAttachmentRetry = viewModel.attachments::retry,
@@ -441,6 +443,7 @@ internal fun ChatScreen(
             onDismiss = { renameDialogOpen = false },
         )
     }
+    app.hapi.companion.feature.chat.annotations.AnnotationDialog(viewModel.annotations)
     app.hapi.companion.feature.chat.history.ConversationHistoryDialog(
         historyState, viewModel.history::confirm, viewModel.history::confirmFallback, viewModel.history::dismiss,
     )

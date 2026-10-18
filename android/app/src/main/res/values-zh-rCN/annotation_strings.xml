@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_add">Comment</string>
+    <string name="annotation_edit">编辑 comment</string>
+    <string name="annotation_remove">移除</string>
+    <string name="annotation_comment">Comment（可选）</string>
+    <string name="annotation_save">保存</string>
+    <string name="annotation_cancel">取消</string>
+    <string name="annotation_more">展开引用</string>
+    <string name="annotation_less">收起引用</string>
+</resources>

@@ -117,23 +117,45 @@ private fun FormulaCanvas(drawable: JLatexMathDrawable, node: InlineMath) {
     val toolbar = LocalTextToolbar.current
     val scope = rememberCoroutineScope()
     var bounds by remember { mutableStateOf(Rect.Zero) }
-    Canvas(
-        Modifier.fillMaxSize().testTag("rendered-math")
-            .semantics { contentDescription = node.latex }
-            .onGloballyPositioned { bounds = it.boundsInWindow() }
-            .pointerInput(node.source, clipboard, toolbar) {
-                detectTapGestures(onLongPress = {
-                    toolbar.showMenu(
-                        rect = bounds,
-                        onCopyRequested = {
-                            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("LaTeX", node.source))) }
-                            toolbar.hide()
-                        },
-                        onPasteRequested = null, onCutRequested = null, onSelectAllRequested = null,
-                    )
-                })
-            },
-    ) { drawable.draw(drawContext.canvas.nativeCanvas) }
+    val comment = LocalMarkdownComment.current
+    var menuOpen by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
+        Canvas(
+            Modifier.fillMaxSize().testTag("rendered-math")
+                .semantics { contentDescription = node.latex }
+                .onGloballyPositioned { bounds = it.boundsInWindow() }
+                .pointerInput(node.source, clipboard, toolbar, comment) {
+                    detectTapGestures(onLongPress = {
+                        if (comment != null) {
+                            menuOpen = true
+                            return@detectTapGestures
+                        }
+                        toolbar.showMenu(
+                            rect = bounds,
+                            onCopyRequested = {
+                                scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("LaTeX", node.source))) }
+                                toolbar.hide()
+                            },
+                            onPasteRequested = null, onCutRequested = null, onSelectAllRequested = null,
+                        )
+                    })
+                },
+        ) { drawable.draw(drawContext.canvas.nativeCanvas) }
+        // An atomic formula has no text-selection focus. Its popup must not share
+        // SelectionContainer's toolbar, which hides itself when selection is empty.
+        if (comment != null) androidx.compose.foundation.text.selection.DisableSelection {
+            androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(android.R.string.copy)) },
+                    onClick = { menuOpen = false; scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("LaTeX", node.source))) } },
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(app.hapi.companion.R.string.annotation_add)) },
+                    onClick = { menuOpen = false; comment(node.source) },
+                )
+            }
+        }
+    }
 }
 
 internal fun AnnotatedString.Builder.appendMath(node: InlineMath, ids: Map<Node, String>, registry: MathCopyRegistry?) {

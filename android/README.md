@@ -26,6 +26,14 @@ differences, pairing and features currently available through the web.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Slash suggestions combine session
   metadata and the slash-command RPC. Caret-aware `@` suggestions include same-hub sessions with conversation content and Codex/Copilot workspace files; `$` suggests runner skills. Selection replaces only the active token and preserves surrounding text. IME composition suspends suggestions; stale responses cannot edit the buffer.
+- **Response comments:** select assistant text and choose **Comment**. The composer
+  keeps multiple editable/removable quote cards alongside its text draft. Confirmed
+  comments persist per Hub/session and use the Codex App `response-annotations`
+  user-text envelope on send, including annotation-only messages. Native Codex
+  message IDs are extracted from projection IDs. Android-created annotations
+  leave source offsets unset; incoming Codex offsets are retained. Incoming
+  envelopes render as quote cards and assistant reply markers as numbered references.
+  Selection preserves Copy/Select all and does not replace the system clipboard.
 - Composer editing uses a holder-owned `TextFieldState`: IME text, selection and
   composition update synchronously. Derived toolbar/draft flows never write text
   back to the field; send and exit read the editing buffer directly. Native

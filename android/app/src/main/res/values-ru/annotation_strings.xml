@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_add">Комментарий</string>
+    <string name="annotation_edit">Изменить комментарий</string>
+    <string name="annotation_remove">Удалить</string>
+    <string name="annotation_comment">Комментарий (необязательно)</string>
+    <string name="annotation_save">Сохранить</string>
+    <string name="annotation_cancel">Отмена</string>
+    <string name="annotation_more">Развернуть цитату</string>
+    <string name="annotation_less">Свернуть цитату</string>
+</resources>

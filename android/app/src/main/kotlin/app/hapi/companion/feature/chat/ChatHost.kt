@@ -127,7 +127,7 @@ internal fun ChatHost(
         handledReset = reset
     }
     val interactions = remember(state.flavor, state.permissionOverrides, viewModel) {
-        ChatInteractions(state.flavor, state.permissionOverrides, viewModel::resolvePermission, viewModel::retryFailedMessage)
+        ChatInteractions(state.flavor, state.permissionOverrides, viewModel::resolvePermission, viewModel::retryFailedMessage, commentOnResponse = viewModel.annotations::request)
     }
     val openFile: (String, Int?) -> Unit = { path, line -> pauseReading(); onOpenFile(path, line) }
     CompositionLocalProvider(
@@ -138,6 +138,7 @@ internal fun ChatHost(
         LocalMarkdownLinkHandler provides rememberChatLinkHandler(onOpenFile = openFile),
     ) {
         Box(Modifier.fillMaxSize()) {
+            if (entry?.destination?.route != "thread") app.hapi.companion.feature.chat.annotations.AnnotationDialog(viewModel.annotations)
             NavHost(navigation, startDestination = "thread") {
                 composable("thread") {
                     ChatScreen(
@@ -263,9 +264,10 @@ internal fun ToolGroupBrowser(
 
 @Composable
 internal fun MessageReader(text: String, stale: Boolean, back: () -> Unit, close: () -> Unit) {
+    val displayed = remember(text) { app.hapi.companion.feature.chat.annotations.ResponseAnnotations.displayPrompt(text) }
     var starts by rememberSaveable { mutableStateOf(listOf(0)) }
-    val start = starts.last().coerceAtMost(text.length)
-    val page = remember(text, start) { readTextPage(text, start) }
+    val start = starts.last().coerceAtMost(displayed.length)
+    val page = remember(displayed, start) { readTextPage(displayed, start) }
     val scroll = rememberScrollState()
     LaunchedEffect(start) { scroll.scrollTo(0) }
     InspectionScaffold(stringResource(R.string.chat_full_message), back, close,
@@ -276,7 +278,7 @@ internal fun MessageReader(text: String, stale: Boolean, back: () -> Unit, close
                     TextButton(onClick = { starts = starts.dropLast(1) }, enabled = starts.size > 1,
                         modifier = Modifier.weight(1f).testTag("reader-previous")) { Text(stringResource(R.string.chat_previous_part)) }
                     TextButton(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.chat_part_number, starts.size)) }
-                    TextButton(onClick = { starts = starts + page.end }, enabled = page.end < text.length,
+                    TextButton(onClick = { starts = starts + page.end }, enabled = page.end < displayed.length,
                         modifier = Modifier.weight(1f).testTag("reader-next")) { Text(stringResource(R.string.chat_next_part)) }
                 }
             }

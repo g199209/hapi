@@ -92,6 +92,7 @@ fun ChatComposer(
     onSendSteer: () -> Unit,
     onAbort: () -> Unit,
     modifier: Modifier = Modifier,
+    annotations: app.hapi.companion.feature.chat.annotations.AnnotationDrafts? = null,
     attachments: List<ComposerAttachmentUi> = emptyList(),
     onAddAttachment: (() -> Unit)? = null,
     onAttachmentRetry: (String) -> Unit = {},
@@ -140,6 +141,7 @@ fun ChatComposer(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column {
+                    annotations?.let { app.hapi.companion.feature.chat.annotations.AnnotationTray(it) }
                     if (attachments.isNotEmpty()) {
                         LazyRow(
                             modifier = Modifier
@@ -512,7 +514,7 @@ private fun PrimaryActionButton(
     onAbort: () -> Unit,
 ) {
     var steerMenuOpen by remember { mutableStateOf(false) }
-    val hasText = state.text.isNotBlank()
+    val hasText = state.text.isNotBlank() || state.hasAnnotations
     val hasDraft = hasText || attachments.isNotEmpty()
     // Attachments gate the send like the web: every chip must settle Ready
     // (uploading waits, failed must be retried or removed); a ready tray

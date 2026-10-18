@@ -176,3 +176,14 @@ the session.
 For development and conformance checks, use the platform READMEs and the
 [client contract](../api/client-contract/index.md). Protocol fixture conformance
 does not imply identical native and web UI features.
+
+### Android response comments
+
+Select text in an assistant reply and choose **Comment**. Save the comment to add a
+quote card above the input, then add further selections or an additional request.
+Cards can be edited or removed; confirmed cards are saved with the session draft.
+Sending uses the Codex App response-annotations text envelope, so existing queue,
+steer and retry behavior applies. Incoming annotated prompts display quote cards;
+reply annotation directives display numbered references. Original native Codex
+message IDs are retained when available; Android-created annotations leave source
+offsets unset. Comment captures the selected text without replacing the clipboard.

@@ -104,6 +104,9 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+import app.hapi.companion.feature.chat.annotations.AnnotationDrafts
+import app.hapi.companion.feature.chat.annotations.ResponseAnnotations
+
 /** Chat top-bar model: title cascade + status + meta line. */
 data class ChatHeaderUi(
     val title: String,
@@ -168,6 +171,7 @@ data class ComposerUiState(
     val canSteer: Boolean,
     /** Local focus intent; does not replace or send the draft. */
     val focusRequest: Long = 0,
+    val hasAnnotations: Boolean = false,
 )
 
 /** One row of the queued-messages bar (uninvoked sends). */
@@ -421,6 +425,7 @@ class ChatViewModel(
     /** Derived text for toolbar/slash flows and persistence, never fed back to BasicTextField. */
     private val composerText = MutableStateFlow("")
     private val sendInFlight = MutableStateFlow(false)
+    val annotations = AnnotationDrafts { saveComposerDraft() }
 
     /**
      * Composer attachment tray (B-M3f). The screen feeds prepared picks in
@@ -545,12 +550,14 @@ class ChatViewModel(
         sendInFlight,
         sessionStateFlow(),
         composerFocusRequest,
-    ) { text, sending, session, focusRequest ->
+        annotations.items,
+    ) { text, sending, session, focusRequest, comments ->
         ComposerUiState(
             text = text,
             isSending = sending,
             canSteer = session.thinking && session.active,
             focusRequest = focusRequest,
+            hasAnnotations = comments.isNotEmpty(),
         )
     }.stateIn(scope, SharingStarted.Eagerly, ComposerUiState(text = "", isSending = false, canSteer = false))
 
@@ -712,12 +719,13 @@ class ChatViewModel(
     private fun flushPendingDraft() {
         val text = composerEditor.text.toString()
         // A screen can close before snapshotFlow observes the last IME edit.
-        val pending = draftJob?.isActive == true || text != composerText.value
+        val pending = draftJob?.isActive == true || text != composerText.value || annotations.items.value.isNotEmpty()
         draftJob?.cancel()
         if (!pending) return
         val store = drafts ?: return
+        val saved = annotations.encode(text)
         kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
-            runCatching { store.save(sessionId, text) }
+            runCatching { store.save(sessionId, saved) }
         }
     }
 
@@ -903,12 +911,24 @@ class ChatViewModel(
             SlashCommands.queryOf(composerText.value) == null
         composerText.value = text
         if (enteredSlashMode) loadSlashCommands()
+        saveComposerDraft()
+    }
+
+    private fun saveComposerDraft() {
         draftJob?.cancel()
         val store = drafts ?: return
+        val saved = annotations.encode(composerEditor.text.toString())
         draftJob = scope.launch {
             delay(draftSaveDebounceMs)
-            runCatching { store.save(sessionId, text) }
+            runCatching { store.save(sessionId, saved) }
         }
+    }
+
+    private fun restoreComposerDraft(text: String) {
+        val prompt = ResponseAnnotations.parse(text)
+        annotations.restore(prompt?.annotations.orEmpty())
+        setComposerText(prompt?.request ?: text)
+        saveComposerDraft()
     }
 
     /** Dictation transcript arrived: append with a space separator (web `appendTranscript`). */
@@ -998,9 +1018,11 @@ class ChatViewModel(
             _events.tryEmit(ChatEvent.Notice(ChatNotice.AttachmentsUploading))
             return
         }
-        val text = composerEditor.text.toString().trim()
+        val request = composerEditor.text.toString().trim()
+        val text = annotations.encode(request)
         val attachmentMetadata = attachments.consume()
         if (text.isEmpty() && attachmentMetadata == null) return
+        annotations.consume()
         setComposerText("")
         draftJob?.cancel()
         sendInFlight.value = true
@@ -1408,11 +1430,12 @@ class ChatViewModel(
             val preview = queuedPreview(row)
             val editText = preview.text.ifEmpty { preview.attachmentNames.joinToString(", ") }
             val composerAtEdit = composerEditor.text.toString()
+            val annotationRevision = annotations.revision
             when (cancelQueuedInternal(messageId)) {
                 "cancelled" -> {
                     withContext(uiDispatcher) {
-                        if (composerEditor.text.toString() == composerAtEdit) {
-                            setComposerText(editText)
+                        if (composerEditor.text.toString() == composerAtEdit && annotations.revision == annotationRevision) {
+                            restoreComposerDraft(editText)
                         } else {
                             _events.tryEmit(ChatEvent.Notice(ChatNotice.QueuedEditKeptDraft))
                         }
@@ -1840,9 +1863,10 @@ class ChatViewModel(
 
     private suspend fun restoreDraft() {
         val store = drafts ?: return
+        val annotationRevision = annotations.revision
         val draft = runCatching { store.load(sessionId) }.getOrNull() ?: return
         withContext(uiDispatcher) {
-            if (composerEditor.text.isEmpty()) setComposerText(draft)
+            if (composerEditor.text.isEmpty() && annotations.revision == annotationRevision) restoreComposerDraft(draft)
         }
     }
 
@@ -1919,8 +1943,8 @@ class ChatViewModel(
         inspection.update(visibleBlocks, window.epoch)
         val sources = visibleBlocks.mapNotNull { block ->
             when (block) {
-                is UserTextBlock -> messagePreview(block.text).text
-                is AgentTextBlock -> block.text
+                is UserTextBlock -> messagePreview(ResponseAnnotations.parse(block.text)?.request ?: block.text).text
+                is AgentTextBlock -> ResponseAnnotations.displayReply(block.text)
                 is AgentReasoningBlock -> block.text
                 is ToolCallBlock -> planProposalMarkdown(block.tool)
                 else -> null

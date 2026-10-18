@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.InlineTextContent
 
 internal val LocalMarkdownSelectable = staticCompositionLocalOf { false }
+val LocalMarkdownComment = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
 /** Compose joins selected Text nodes directly. Add logical separators without
  * changing visible spacing, and keep them inside the native selection model. */
