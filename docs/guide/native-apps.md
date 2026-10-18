@@ -196,3 +196,10 @@ retry payloads are saved privately per Hub/session. Ready uploads restore withou
 re-uploading; an interrupted upload restores as Failed with an explicit Retry.
 Sending clears the attachment draft while keeping the message attachment available;
 Remove clears the draft entry and deletes its remote upload.
+
+### Android question replies
+
+Codex App question-answer replies display the question as expandable context and
+the answer as selectable text, with internal IDs and JSON hidden. The full-message
+reader and queued previews use readable text; original message content remains
+available through raw copy/export.

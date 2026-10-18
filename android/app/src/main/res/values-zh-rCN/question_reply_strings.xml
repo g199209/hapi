@@ -1,0 +1,5 @@
+<resources>
+    <string name="question_reply_title">问题回复</string>
+    <string name="question_reply_more">展开问题</string>
+    <string name="question_reply_less">收起问题</string>
+</resources>

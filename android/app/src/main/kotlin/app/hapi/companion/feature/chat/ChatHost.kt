@@ -264,7 +264,11 @@ internal fun ToolGroupBrowser(
 
 @Composable
 internal fun MessageReader(text: String, stale: Boolean, back: () -> Unit, close: () -> Unit) {
-    val displayed = remember(text) { app.hapi.companion.feature.chat.annotations.ResponseAnnotations.displayPrompt(text) }
+    val displayed = remember(text) {
+        app.hapi.companion.feature.chat.blocks.QuestionReplies.displayPrompt(
+            app.hapi.companion.feature.chat.annotations.ResponseAnnotations.displayPrompt(text),
+        )
+    }
     var starts by rememberSaveable { mutableStateOf(listOf(0)) }
     val start = starts.last().coerceAtMost(displayed.length)
     val page = remember(displayed, start) { readTextPage(displayed, start) }

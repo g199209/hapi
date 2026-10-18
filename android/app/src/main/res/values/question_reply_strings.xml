@@ -1,0 +1,5 @@
+<resources>
+    <string name="question_reply_title">Question reply</string>
+    <string name="question_reply_more">Show question</string>
+    <string name="question_reply_less">Collapse question</string>
+</resources>

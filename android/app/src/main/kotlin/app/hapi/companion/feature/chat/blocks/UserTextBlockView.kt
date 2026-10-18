@@ -52,7 +52,8 @@ import app.hapi.protocol.chat.UserTextBlock
 @Composable
 fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
     val annotated = remember(block.text) { app.hapi.companion.feature.chat.annotations.ResponseAnnotations.parse(block.text) }
-    val request = annotated?.request ?: block.text
+    val replies = remember(block.text) { QuestionReplies.parse(block.text) }
+    val request = if (replies != null) "" else annotated?.request ?: block.text
     val preview = remember(request) { messagePreview(request) }
     val inspection = LocalChatInspection.current
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -67,16 +68,19 @@ fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
                     modifier = Modifier.widthIn(max = maxBubbleWidth),
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        if (replies != null) Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            replies.forEachIndexed { index, reply -> QuestionReplyView(reply, block.id, index) }
+                        }
                         annotated?.annotations?.forEachIndexed { index, value ->
                             app.hapi.companion.feature.chat.annotations.AnnotationCard(value, index, Modifier.padding(bottom = 6.dp))
                         }
-                        if (preview.text.isNotBlank()) Markdown(
+                        if (replies == null && preview.text.isNotBlank()) Markdown(
                             text = preview.text,
                             textStyle = HapiTypography.body,
                             selectable = true,
                             preserveLineBreaks = true,
                         )
-                        if (preview.end < request.length) {
+                        if (replies == null && preview.end < request.length) {
                             TextButton(onClick = { inspection?.openMessage(block.id) }, enabled = inspection != null) {
                                 Text(stringResource(R.string.chat_view_full_message))
                             }

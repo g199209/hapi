@@ -1,0 +1,5 @@
+<resources>
+    <string name="question_reply_title">Ответ на вопрос</string>
+    <string name="question_reply_more">Показать вопрос</string>
+    <string name="question_reply_less">Свернуть вопрос</string>
+</resources>

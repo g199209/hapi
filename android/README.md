@@ -38,6 +38,10 @@ differences, pairing and features currently available through the web.
   leave source offsets unset; incoming Codex offsets are retained. Incoming
   envelopes render as quote cards and assistant reply markers as numbered references.
   Selection preserves Copy/Select all and does not replace the system clipboard.
+- **Question replies:** Codex App question-answer envelopes render as readable
+  question/answer bubbles, with muted, expandable context and a prominent,
+  selectable answer. Queue previews and the full-message reader hide wire fields;
+  stored messages and raw copy/export retain the original payload.
 - Composer editing uses a holder-owned `TextFieldState`: IME text, selection and
   composition update synchronously. Derived toolbar/draft flows never write text
   back to the field; send and exit read the editing buffer directly. Native
