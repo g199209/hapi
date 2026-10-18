@@ -187,3 +187,12 @@ steer and retry behavior applies. Incoming annotated prompts display quote cards
 reply annotation directives display numbered references. Original native Codex
 message IDs are retained when available; Android-created annotations leave source
 offsets unset. Comment captures the selected text without replacing the clipboard.
+
+### Android attachment drafts
+
+Picked images and files stay with the session draft when returning to the session
+list. Preparation and uploads continue on the active Hub. Paths, thumbnails and
+retry payloads are saved privately per Hub/session. Ready uploads restore without
+re-uploading; an interrupted upload restores as Failed with an explicit Retry.
+Sending clears the attachment draft while keeping the message attachment available;
+Remove clears the draft entry and deletes its remote upload.

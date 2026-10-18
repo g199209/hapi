@@ -990,7 +990,7 @@ class ChatViewModelInteractionTest {
         harness.api.deleteUploadCalls.first { it.size == 1 }
         harness.viewModel.attachments.items.first { it.isEmpty() }
 
-        // Un-sent leftovers are discarded when the screen goes away for good.
+        // Explicitly discarding a draft still cleans up its remote uploads.
         harness.viewModel.attachments.add(preparedShot(id = "att-2", filename = "b.jpg"))
         harness.awaitAttachmentsReady()
         harness.viewModel.discardAttachments()

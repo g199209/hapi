@@ -3,20 +3,25 @@ package app.hapi.companion.feature.chat.attachments
 import app.hapi.data.api.AttachmentUploadApi
 import app.hapi.protocol.wire.AttachmentMetadata
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * A picked file after platform preparation (ContentResolver read + optional
@@ -67,10 +72,10 @@ data class ComposerAttachmentUi(
  *   send body — `previewUrl` is a small JPEG data URL
  *   ([AttachmentPolicy.PREVIEW_MAX_DIMENSION]) so user bubbles render
  *   thumbnails on every client.
- * - **Drafts (v1 simplification)**: unlike the web (IndexedDB attachment
- *   drafts), attachments never persist. Leaving the chat for good discards
- *   un-sent chips via [discardAllDetached] after best-effort hub deletes;
- *   text drafts alone survive.
+ * - **Drafts**: the Hub-scoped registry retains the tray and uploads across
+ *   navigation. Private snapshots retain paths/previews and pending payloads.
+ *   An interrupted upload restores Failed for an explicit retry; Ready paths
+ *   restore without uploading again. Only remove/discard delete remote files.
  * - **Inactive sessions (v1 simplification)**: the hub's upload route
  *   requires an active session, and unlike the web this tray does not
  *   resume-then-upload — a pick on an inactive session settles Failed;
@@ -86,6 +91,7 @@ class ComposerAttachments(
     private val encodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     /** [discardAllDetached] launch target; null ⇒ GlobalScope (production). */
     private val detachedCleanupScope: CoroutineScope? = null,
+    private val draftStore: AttachmentDraftStore? = null,
 ) {
     private class Entry(
         val ui: ComposerAttachmentUi,
@@ -96,6 +102,43 @@ class ComposerAttachments(
     )
 
     private val entries = MutableStateFlow<List<Entry>>(emptyList())
+    private val restored = CompletableDeferred<Unit>()
+    private val persistenceMutex = Mutex()
+    private val preparationMutex = Mutex()
+    private val preparing = MutableStateFlow(0)
+    private val removedIds = ConcurrentHashMap.newKeySet<String>()
+
+    init {
+        if (draftStore == null) restored.complete(Unit)
+        else scope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching { draftStore.load(sessionId) }.getOrDefault(emptyList()) }
+            entries.update { current ->
+                val known = current.map { it.ui.id }.toSet()
+                saved.filterNot { it.ui.id in known || it.ui.id in removedIds }.map {
+                    // A process died before an upload outcome was persisted.
+                    // Keep its bytes for explicit Retry, never submit it twice automatically.
+                    val status = if (it.path != null) ComposerAttachmentStatus.Ready else ComposerAttachmentStatus.Failed
+                    Entry(it.ui.copy(status = status), path = it.path, bytes = it.bytes)
+                } + current
+            }
+            restored.complete(Unit)
+            entries.collect { flush() }
+        }
+    }
+
+    /** Serialize the latest state under the same lock for every writer. A late
+     * background save therefore cannot resurrect an entry after consume/remove. */
+    suspend fun flush() {
+        restored.await()
+        val store = draftStore ?: return
+        persistenceMutex.withLock {
+            withContext(Dispatchers.IO) {
+                runCatching { store.save(sessionId, draftSnapshot()) }
+            }
+        }
+    }
+
+    internal fun draftSnapshot(): List<AttachmentDraftEntry> = entries.value.map { AttachmentDraftEntry(it.ui, it.path, it.bytes) }
 
     /** Chip states for the composer row. */
     val items: StateFlow<List<ComposerAttachmentUi>> = entries
@@ -108,7 +151,17 @@ class ComposerAttachments(
 
     /** True while any chip is Uploading or Failed — send must wait or resolve. */
     fun hasUnsettled(): Boolean =
-        entries.value.any { it.ui.status != ComposerAttachmentStatus.Ready }
+        !restored.isCompleted || preparing.value > 0 || entries.value.any { it.ui.status != ComposerAttachmentStatus.Ready }
+
+    /** Picker/camera reads also belong to the Hub scope. Keep preparation serial
+     * to avoid decoding several full-size phone photos at once. */
+    fun prepare(producer: suspend () -> PreparedAttachment?) {
+        preparing.update { it + 1 }
+        scope.launch {
+            try { preparationMutex.withLock { producer()?.let(::add) } }
+            finally { preparing.update { it - 1 } }
+        }
+    }
 
     /** Add a prepared pick to the tray and start its upload. */
     fun add(prepared: PreparedAttachment) {
@@ -146,13 +199,14 @@ class ComposerAttachments(
      * in-flight upload deletes its result on completion (see [upload]).
      */
     fun remove(id: String) {
+        removedIds.add(id)
         var removed: Entry? = null
         entries.update { list ->
             removed = list.firstOrNull { it.ui.id == id }
             list.filterNot { it.ui.id == id }
         }
         removed?.path?.let { path ->
-            scope.launch { runCatching { api.deleteUpload(sessionId, path) } }
+            scope.launch { flush(); runCatching { api.deleteUpload(sessionId, path) } }
         }
     }
 
@@ -170,6 +224,7 @@ class ComposerAttachments(
             list - taken.toSet()
         }
         if (taken.isEmpty()) return null
+        removedIds.addAll(taken.map { it.ui.id })
         return taken.map { entry ->
             AttachmentMetadata(
                 id = entry.ui.id,
@@ -183,10 +238,8 @@ class ComposerAttachments(
     }
 
     /**
-     * Leaving the chat for good (ViewModel holder `onCleared`): un-sent
-     * uploads are orphans on the hub — delete them best-effort on a detached
-     * scope, because the owning scope is being cancelled right after (same
-     * pattern as the draft flush). Attachments are NOT part of drafts v1.
+     * Explicitly discard the tray. Navigation retains it instead. This also
+     * handles uploads completing after a removal through the orphan cleanup.
      */
     @OptIn(DelicateCoroutinesApi::class)
     fun discardAllDetached() {
@@ -196,14 +249,17 @@ class ComposerAttachments(
             emptyList()
         }
         val paths = dropped.mapNotNull { it.path }
-        if (paths.isEmpty()) return
+        removedIds.addAll(dropped.map { it.ui.id })
         (detachedCleanupScope ?: GlobalScope).launch(Dispatchers.IO) {
+            flush()
             paths.forEach { path -> runCatching { api.deleteUpload(sessionId, path) } }
         }
     }
 
     private fun upload(id: String, filename: String, mimeType: String, bytes: ByteArray) {
         scope.launch {
+            restored.await()
+            flush()
             val base64 = withContext(encodeDispatcher) { Base64.getEncoder().encodeToString(bytes) }
             val path = try {
                 val response = api.uploadFile(sessionId, filename, base64, mimeType)
@@ -227,6 +283,7 @@ class ComposerAttachments(
                     }
                 }
             }
+            flush()
             // Removed while uploading: the hub file just became an orphan.
             if (!applied && path != null) {
                 runCatching { api.deleteUpload(sessionId, path) }

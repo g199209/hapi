@@ -304,10 +304,9 @@ sealed interface PermissionAction {
  *   then rides the Ready set as `SendMessageRequest.attachments` — the
  *   optimistic row carries them so the user bubble shows thumbnails at once,
  *   and [retryFailedMessage] re-extracts them from the row's wire content.
- *   Attachments are NOT part of drafts (v1 simplification vs the web's
- *   IndexedDB attachment drafts): leaving the chat for good
- *   ([discardAttachments], holder `onCleared`) drops un-sent chips after a
- *   best-effort hub delete.
+ *   Production trays belong to the Hub/session draft, so navigation retains
+ *   their uploads, metadata and retry payloads. Private files restore them
+ *   after process death; explicit remove/discard performs remote cleanup.
  *
  * B-M3ce adds:
  * - **Slash commands** ([slashSuggestions]/[selectSlashCommand]): `/token`
@@ -353,6 +352,7 @@ class ChatViewModel(
     /** Serialized UI event loop; JVM tests inject their UI dispatcher. */
     private val uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val historyApi: app.hapi.data.api.ConversationHistoryApi? = api as? app.hapi.data.api.ConversationHistoryApi,
+    private val attachmentDrafts: app.hapi.companion.feature.chat.attachments.ComposerAttachmentDrafts? = null,
 ) {
     // The holder's scope is a Default worker scope, NOT the coordinator's
     // executor. Share its lifetime, but serialize all history/lifecycle state
@@ -431,7 +431,7 @@ class ChatViewModel(
      * Composer attachment tray (B-M3f). The screen feeds prepared picks in
      * and renders `attachments.items`; [sendMessage] consumes the Ready set.
      */
-    val attachments = ComposerAttachments(api = api, sessionId = sessionId, scope = scope)
+    val attachments = attachmentDrafts?.get(sessionId) ?: ComposerAttachments(api = api, sessionId = sessionId, scope = scope)
     private val queuedOpPending = MutableStateFlow(false)
     private val permissionOverrides = MutableStateFlow<Map<String, PermissionRowOverride>>(emptyMap())
     private val configOpPending = MutableStateFlow(false)
@@ -1029,6 +1029,7 @@ class ChatViewModel(
         scope.launch {
             try {
                 drafts?.let { runCatching { it.clear(sessionId) } }
+                attachments.flush()
                 if (attachmentMetadata == null && (text == "/clear" || text == "/new") &&
                     sessionStore.sessionDetail(sessionId).first()?.metadata?.capabilities?.concurrentClients == true) {
                     sendInFlight.value = true
@@ -1058,9 +1059,8 @@ class ChatViewModel(
     }
 
     /**
-     * The screen is going away for good (holder `onCleared`, not a config
-     * change): un-sent uploads are discarded after a best-effort hub delete.
-     * Attachments deliberately do not persist in drafts v1.
+     * Explicitly discard the attachment draft and its uploaded files.
+     * Leaving the chat retains the Hub-owned draft.
      */
     fun discardAttachments() {
         attachments.discardAllDetached()

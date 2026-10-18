@@ -197,21 +197,21 @@ internal fun ChatScreen(
     val preparer = remember { AttachmentPreparer(context) }
 
     /** Read + policy-apply one pick, then hand it to the upload tray. */
-    suspend fun ingestUri(uri: Uri) {
+    suspend fun prepareUri(uri: Uri): app.hapi.companion.feature.chat.attachments.PreparedAttachment? =
         when (val result = preparer.prepare(uri)) {
-            is PrepareResult.Ready -> viewModel.attachments.add(result.attachment)
-            is PrepareResult.TooLarge -> snackbarHostState.showSnackbar(
-                context.getString(R.string.chat_notice_attachment_too_large, result.filename),
-            )
-            is PrepareResult.Unreadable -> snackbarHostState.showSnackbar(
-                context.getString(R.string.chat_notice_attachment_unreadable, result.filename),
-            )
+            is PrepareResult.Ready -> result.attachment
+            is PrepareResult.TooLarge -> {
+                scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.chat_notice_attachment_too_large, result.filename)) }
+                null
+            }
+            is PrepareResult.Unreadable -> {
+                scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.chat_notice_attachment_unreadable, result.filename)) }
+                null
+            }
         }
-    }
 
     fun ingestUris(uris: List<Uri>) {
-        if (uris.isEmpty()) return
-        scope.launch { uris.forEach { ingestUri(it) } }
+        uris.forEach { uri -> viewModel.attachments.prepare { prepareUri(uri) } }
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -235,9 +235,8 @@ internal fun ChatScreen(
             capture.discard()
             return@rememberLauncherForActivityResult
         }
-        scope.launch {
-            ingestUri(capture.uri)
-            capture.discard()
+        viewModel.attachments.prepare {
+            try { prepareUri(capture.uri) } finally { capture.discard() }
         }
     }
 

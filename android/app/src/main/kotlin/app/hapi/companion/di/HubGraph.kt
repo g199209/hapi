@@ -1,6 +1,8 @@
 package app.hapi.companion.di
 
 import android.content.Context
+import app.hapi.companion.feature.chat.attachments.ComposerAttachmentDrafts
+import app.hapi.companion.feature.chat.attachments.FileAttachmentDraftStore
 import app.hapi.companion.feature.chat.composer.ChatDrafts
 import app.hapi.data.HubSession
 import app.hapi.data.auth.AuthEvents
@@ -157,6 +159,10 @@ class HubGraph(
 
     /** Per-session composer drafts, keyed under this hub (process-wide DataStore). */
     val chatDrafts: ChatDrafts = DataStoreChatDrafts(context.chatDraftsDataStore, hubKey = session.hubUrl)
+
+    val attachmentDrafts = ComposerAttachmentDrafts(
+        session.api, scope, FileAttachmentDraftStore(File(snapshotDir, "attachment-drafts")),
+    )
 
     override fun close() {
         networkMonitor.close()

@@ -628,6 +628,7 @@ private class ChatViewModelHolder(
         syncTargets = hubGraph.syncTargets,
         scope = scope,
         drafts = hubGraph.chatDrafts,
+        attachmentDrafts = hubGraph.attachmentDrafts,
         scratchlist = hubGraph.scratchlistStore,
     )
 
@@ -648,10 +649,7 @@ private class ChatViewModelHolder(
 
     override fun onCleared() {
         dictation.cancel()
-        // Leaving the chat for good (not rotation): un-sent uploaded
-        // attachments are discarded after a best-effort hub delete (B-M3f;
-        // attachments are not part of drafts v1).
-        viewModel.discardAttachments()
+        // Attachments belong to the Hub/session draft; uploads continue after Back.
         viewModel.stop()
         scope.cancel()
     }

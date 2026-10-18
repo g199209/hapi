@@ -24,7 +24,11 @@ differences, pairing and features currently available through the web.
   Reopen can return another session ID: seed its window, move the draft and
   replace navigation with the returned ID.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
-  attachments uploaded on selection. Slash suggestions combine session
+  attachments uploaded on selection. Image/file drafts retain their thumbnail,
+  upload path and pending retry bytes per Hub/session. Preparation and uploads
+  continue when returning to the session list; private snapshots restore them
+  after process restart. Ready files are reused; interrupted uploads offer Retry.
+  Sending consumes the attachment draft, and explicit Remove deletes the upload. Slash suggestions combine session
   metadata and the slash-command RPC. Caret-aware `@` suggestions include same-hub sessions with conversation content and Codex/Copilot workspace files; `$` suggests runner skills. Selection replaces only the active token and preserves surrounding text. IME composition suspends suggestions; stale responses cannot edit the buffer.
 - **Response comments:** select assistant text and choose **Comment**. The composer
   keeps multiple editable/removable quote cards alongside its text draft. Confirmed
