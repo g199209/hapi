@@ -600,6 +600,10 @@ private class SessionListViewModelHolder : ViewModel() {
             lastSeenStore = hubGraph.lastSeenStore,
             scope = nextScope,
             hubKey = hubGraph.hubUrl,
+            forkGateway = object : app.hapi.companion.feature.sessions.SessionForkGateway {
+                override suspend fun load(sessionId: String) = hubGraph.session.api.getSession(sessionId).session
+                override suspend fun fork(sessionId: String) = hubGraph.session.api.forkConversation(sessionId).sessionId
+            },
         ).also { model = it }
     }
 

@@ -19,7 +19,9 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
@@ -58,7 +60,13 @@ private class FakeSessionStore : SessionListStore {
         if (mode == "global") throw RuntimeException("pin exploded")
     }
 
-    override suspend fun archiveSession(sessionId: String) = record("archive:$sessionId")
+    var archiveGate: CompletableDeferred<Unit>? = null
+    var archiveFailure: Exception? = null
+    override suspend fun archiveSession(sessionId: String) {
+        record("archive:$sessionId")
+        archiveGate?.await()
+        archiveFailure?.let { throw it }
+    }
 
     var renameFailure: Exception? = null
     override suspend fun renameSession(sessionId: String, name: String) {
@@ -169,6 +177,29 @@ private fun TestScope.buildViewModel(
 // ------------------------------------------------------------------ tests --
 
 class SessionListViewModelTest {
+    @Test fun `archive pending guard prevents duplicate requests while other rows remain usable`() = runTest {
+        val store = FakeSessionStore().apply { archiveGate = CompletableDeferred() }
+        val (vm, _, _) = buildViewModel(store)
+        vm.archiveSession("one"); vm.archiveSession("one"); vm.archiveSession("two"); runCurrent()
+        assertEquals(listOf("archive:one", "archive:two"), store.calls.value)
+        assertEquals(setOf("one", "two"), vm.archiving.value)
+        store.archiveGate!!.complete(Unit); runCurrent()
+        assertTrue(vm.archiving.value.isEmpty())
+    }
+
+    @Test fun `archive failure releases pending state emits error and advances row reset revision`() = runTest {
+        val store = FakeSessionStore().apply { archiveFailure = IllegalStateException("offline") }
+        val (vm, _, _) = buildViewModel(store)
+        val errors = mutableListOf<SessionListError>()
+        backgroundScope.launch { vm.errors.collect { errors += it } }; runCurrent()
+        vm.archiveSession("one"); runCurrent()
+        assertTrue(vm.archiving.value.isEmpty()); assertEquals(1L, vm.archiveFailures.value["one"])
+        assertTrue(errors.single() is SessionListError.ArchiveFailed)
+        store.archiveFailure = null; vm.archiveSession("one"); runCurrent()
+        assertEquals(2, store.calls.value.size); assertEquals(1L, vm.archiveFailures.value["one"])
+        assertTrue(vm.archiving.value.isEmpty())
+    }
+
     @Test
     fun `mark unread follows message clock survives maintenance and clears when opened`() = runTest {
         val sessions = FakeSessionStore()

@@ -21,7 +21,7 @@ import org.junit.Test
 class ConversationHistoryLiveTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun forkBeforeAndCurrentUseIndependentNativeThreadsPreserveSourceAndReturnToDraft() {
+    @Test fun listForkUsesIndependentNativeThreadAndPreservesSourceDraft() {
         val sourceId = InstrumentationRegistry.getArguments().getString("forkFixture").orEmpty()
         assumeTrue("An explicit task-owned two-turn fixture is required", sourceId.isNotBlank())
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as HapiApp
@@ -36,7 +36,6 @@ class ConversationHistoryLiveTest {
         assertTrue(sourceUsers.all { it.content.toString().contains("HAPI_HISTORY_FIXTURE_") })
         assertTrue(original.metadata?.capabilities?.conversationHistory?.forkCurrent == true)
         assertTrue(original.metadata?.capabilities?.conversationHistory?.rewindToMessage == false)
-        val boundary = sourceUsers.last().localId!!
         val nativeSource = original.metadata!!.codexSessionId!!
         val children = mutableListOf<String>()
         val natives = mutableListOf<String>()
@@ -57,39 +56,35 @@ class ConversationHistoryLiveTest {
                     .hideSoftInputFromWindow(focused.windowToken, 0)
             }
         }
-        compose.waitUntil(30_000) { compose.onAllNodesWithTag("history-fork-$boundary").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("history-fork-$boundary").performScrollTo().performClick()
-        compose.onNodeWithTag("history-confirm").performClick()
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.chat_back)).performClick()
+        compose.waitUntil(30_000) { app.appGraph.openChatSessionId.value == null }
+        val sourceTitle = requireNotNull(original.metadata?.name)
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.sessions_search_open)).performClick()
+        compose.onNode(hasSetTextAction()).performTextInput(sourceTitle)
+        compose.onNodeWithTag("session-row-$sourceId").performTouchInput { longClick(center) }
+        compose.waitUntil(30_000) { compose.onAllNodesWithText(compose.activity.getString(R.string.history_fork_current)).fetchSemanticsNodes().size == 1 }
+        compose.onNodeWithText(compose.activity.getString(R.string.history_fork_current)).assertIsEnabled().performClick()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("history-confirm").assertIsDisplayed().performClick()
         compose.waitUntil(60_000) { app.appGraph.openChatSessionId.value?.let { it != sourceId } == true }
-        val beforeChild = app.appGraph.openChatSessionId.value!!
-        children += beforeChild; record()
-        compose.waitUntil(60_000) { users(beforeChild).size == 1 }
-        val before = runBlocking { graph.session.api.getSession(beforeChild) }.session
-        assertNotEquals(nativeSource, before.metadata!!.codexSessionId)
-        natives += before.metadata!!.codexSessionId!!; record()
-        assertEquals(userText(sourceUsers.first()), userText(users(beforeChild).single()))
+        val child = app.appGraph.openChatSessionId.value!!
+        children += child; record()
+        compose.waitUntil(60_000) { users(child).size == 2 }
+        val detail = runBlocking { graph.session.api.getSession(child) }.session
+        natives += detail.metadata!!.codexSessionId!!; record()
+        assertNotEquals(nativeSource, natives.single())
+        assertEquals(sourceUsers.map(::userText), users(child).map(::userText))
         assertEquals(2, users(sourceId).size)
         compose.onNodeWithTag("chat-composer-input").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.chat_session_actions)).performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.history_fork_current)).assertDoesNotExist()
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.chat_back)).performClick()
+        compose.waitUntil(30_000) { app.appGraph.openChatSessionId.value == null }
+        compose.onNodeWithTag("session-row-$sourceId").performClick()
         compose.waitUntil(30_000) { app.appGraph.openChatSessionId.value == sourceId }
         compose.onNodeWithTag("chat-composer-input").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("保留原 draft")))
         compose.onNodeWithTag("chat-composer-input").performTextClearance()
-        compose.onNodeWithContentDescription(compose.activity.getString(R.string.chat_session_actions)).performClick()
-        compose.onNodeWithText(compose.activity.getString(R.string.history_fork_current)).performClick()
-        compose.onNodeWithTag("history-confirm").performClick()
-        compose.waitUntil(60_000) { app.appGraph.openChatSessionId.value?.let { it != sourceId && it != beforeChild } == true }
-        val currentChild = app.appGraph.openChatSessionId.value!!
-        children += currentChild; record()
-        compose.waitUntil(60_000) { users(currentChild).size == 2 }
-        val current = runBlocking { graph.session.api.getSession(currentChild) }.session
-        natives += current.metadata!!.codexSessionId!!; record()
-        assertEquals(3, (natives + nativeSource).distinct().size)
-        assertEquals(sourceUsers.map(::userText), users(currentChild).map(::userText))
-        assertEquals(2, users(sourceId).size)
-        compose.onNodeWithTag("chat-composer-input").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
-        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.waitUntil(30_000) { app.appGraph.openChatSessionId.value == sourceId }
-        compose.onNodeWithTag("chat-composer-input").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         record()
     }
 }

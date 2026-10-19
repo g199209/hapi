@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Sessions whose metadata carries no machine id group under this filter id. */
@@ -95,6 +96,7 @@ class SessionListViewModel(
     private val scope: CoroutineScope,
     /** Last-seen baseline scope, e.g. the hub origin. */
     private val hubKey: String = "default",
+    forkGateway: SessionForkGateway? = null,
 ) {
     private val machineFilter = MutableStateFlow<String?>(null)
     private val showArchived = MutableStateFlow(false)
@@ -110,6 +112,15 @@ class SessionListViewModel(
 
     /** Transient action failures (pin/archive/rename/delete/reopen) for a snackbar. */
     val errors: SharedFlow<SessionListError> = _errors.asSharedFlow()
+
+    private val _archiving = MutableStateFlow<Set<String>>(emptySet())
+    val archiving: StateFlow<Set<String>> = _archiving.asStateFlow()
+    private val _archiveFailures = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val archiveFailures: StateFlow<Map<String, Long>> = _archiveFailures.asStateFlow()
+
+    val fork = SessionForkController(forkGateway, scope, sessionStore::scheduleRefresh) { id, error ->
+        _errors.tryEmit(SessionListError.ForkFailed(id, error))
+    }
 
     private val _reopened = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
@@ -276,13 +287,21 @@ class SessionListViewModel(
 
     /** Archive on the hub; visible membership follows its lifecycle metadata. */
     fun archiveSession(sessionId: String) {
+        while (true) {
+            val pending = _archiving.value
+            if (sessionId in pending) return
+            if (_archiving.compareAndSet(pending, pending + sessionId)) break
+        }
         scope.launch {
             try {
                 sessionStore.archiveSession(sessionId)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
+                _archiveFailures.update { it + (sessionId to ((it[sessionId] ?: 0) + 1)) }
                 _errors.tryEmit(SessionListError.ArchiveFailed(sessionId, error.message))
+            } finally {
+                _archiving.update { it - sessionId }
             }
         }
     }
@@ -439,6 +458,8 @@ class SessionListViewModel(
 
     companion object {
         fun isArchived(session: SessionSummary): Boolean = session.metadata?.lifecycleState == "archived"
+        fun canArchive(session: SessionSummary): Boolean = !isArchived(session) &&
+            (session.active || session.metadata?.lifecycleState in listOf("running", "idle"))
 
         /** `getSessionTitle` (`web/src/lib/sessionTitle.ts`). */
         fun sessionTitle(summary: SessionSummary): String {
@@ -491,6 +512,7 @@ sealed interface SessionListError {
         val stillActive: Boolean = false,
     ) : SessionListError
     data class ReopenFailed(override val sessionId: String, override val message: String?) : SessionListError
+    data class ForkFailed(override val sessionId: String, override val message: String?) : SessionListError
 
     /** Machines list refresh failed — advisory only, never the offline banner. */
     data class MachinesRefreshFailed(override val message: String?) : SessionListError {

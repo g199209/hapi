@@ -30,15 +30,17 @@ class ConversationHistoryUiTest {
         override suspend fun rewindConversation(sessionId: String, messageLocalId: String) { rewinds++ }
     }
 
-    @Test fun sharedCodexOffersForkWithoutRewindAndBusyButtonsStayDisabled() {
+    @Test fun messagesHaveNoForkAndRewindStaysCapabilityAndBusyGated() {
         val availability = mutableStateOf(context(rewind = false).availability)
         compose.setContent { HapiTheme { CompositionLocalProvider(LocalConversationHistory provides HistoryInteractions(availability.value, false) { _, _, _ -> }) {
             MessageHistoryActions(point)
         } } }
-        compose.onNodeWithText(label(R.string.history_fork)).assertIsEnabled()
+        compose.onNodeWithText(label(R.string.history_fork)).assertDoesNotExist()
         compose.onNodeWithText(label(R.string.history_rewind)).assertDoesNotExist()
-        compose.runOnIdle { availability.value = context(rewind = false, ready = false).availability }
-        compose.onNodeWithText(label(R.string.history_fork)).assertIsNotEnabled()
+        compose.runOnIdle { availability.value = context().availability }
+        compose.onNodeWithText(label(R.string.history_rewind)).assertIsEnabled()
+        compose.runOnIdle { availability.value = context(ready = false).availability }
+        compose.onNodeWithText(label(R.string.history_rewind)).assertIsNotEnabled()
     }
 
     @Test fun confirmationShowsExactBoundarySurvivesRestorationAndCancelNeverMutates() {
@@ -50,7 +52,7 @@ class ConversationHistoryUiTest {
             val state by controller.state.collectAsState()
             HapiTheme { CompositionLocalProvider(LocalConversationHistory provides HistoryInteractions(context().availability, state.pending, controller::request)) {
                 MessageHistoryActions(point)
-                ConversationHistoryDialog(state, controller::confirm, controller::confirmFallback, controller::dismiss)
+                ConversationHistoryDialog(state, controller::confirm, controller::dismiss)
             } }
         }
         compose.onNodeWithText(label(R.string.history_rewind)).performClick()
@@ -71,7 +73,7 @@ class ConversationHistoryUiTest {
             val controller = remember { ConversationHistoryController("source", api, { context() }, { refreshes++ }, {}, scope) }
             val state by controller.state.collectAsState()
             HapiTheme { CompositionLocalProvider(LocalConversationHistory provides HistoryInteractions(context().availability, state.pending, controller::request)) {
-                MessageHistoryActions(point); ConversationHistoryDialog(state, controller::confirm, controller::confirmFallback, controller::dismiss)
+                MessageHistoryActions(point); ConversationHistoryDialog(state, controller::confirm, controller::dismiss)
             } }
         }
         compose.onNodeWithText(label(R.string.history_rewind)).performClick()
@@ -83,7 +85,7 @@ class ConversationHistoryUiTest {
         compose.onNodeWithTag("history-confirm").assertDoesNotExist()
     }
 
-    @Test fun ambiguousRewindNeedsExplicitForkConfirmation() {
+    @Test fun ambiguousRewindPointsToListWithoutAnotherForkButton() {
         val api = object : Api() { override suspend fun rewindConversation(sessionId: String, messageLocalId: String) {
             rewinds++; throw ApiError(409, "ambiguous_native_boundary_fork_safe")
         } }
@@ -92,14 +94,16 @@ class ConversationHistoryUiTest {
             val controller = remember { ConversationHistoryController("source", api, { context() }, {}, {}, scope) }
             val state by controller.state.collectAsState()
             HapiTheme { CompositionLocalProvider(LocalConversationHistory provides HistoryInteractions(context().availability, state.pending, controller::request)) {
-                MessageHistoryActions(point); ConversationHistoryDialog(state, controller::confirm, controller::confirmFallback, controller::dismiss)
+                MessageHistoryActions(point); ConversationHistoryDialog(state, controller::confirm, controller::dismiss)
             } }
         }
         compose.onNodeWithText(label(R.string.history_rewind)).performClick()
         compose.onNodeWithTag("history-confirm").performClick()
         compose.onNodeWithText(label(R.string.history_fallback_title)).assertIsDisplayed()
         compose.runOnIdle { assertTrue(api.forks.isEmpty()) }
-        compose.onNodeWithTag("history-confirm").performClick()
-        compose.runOnIdle { assertEquals(listOf("local"), api.forks); assertEquals(1, api.rewinds) }
+        compose.onNodeWithTag("history-confirm").assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.history_fork)).assertDoesNotExist()
+        compose.onNodeWithTag("history-cancel").performClick()
+        compose.runOnIdle { assertTrue(api.forks.isEmpty()); assertEquals(1, api.rewinds) }
     }
 }

@@ -9,7 +9,7 @@
     <string name="history_rewind_title">Rewind 到这条消息之前？</string>
     <string name="history_rewind_body">这条消息及之后的 history 将被永久移除。Workspace 文件保持当前内容。</string>
     <string name="history_fallback_title">无法执行 Rewind</string>
-    <string name="history_fallback_body">Native history boundary 存在歧义，HAPI 没有执行 Rewind。是否改为 Fork 到这条消息之前？</string>
+    <string name="history_fallback_body">Native history boundary 存在歧义，HAPI 没有执行 Rewind。如需 Fork 当前 history，请返回会话列表，长按该会话并选择 Fork session。</string>
     <string name="history_refresh_title">刷新 conversation history</string>
     <string name="history_refresh_body">需要从 Hub 重新读取 history 才能继续；刷新不会再次提交 Rewind。</string>
     <string name="history_refresh">刷新 history</string>

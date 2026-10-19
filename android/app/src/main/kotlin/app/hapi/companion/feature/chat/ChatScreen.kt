@@ -302,10 +302,6 @@ internal fun ChatScreen(
                         onOpenFiles = onOpenFiles,
                         scratchlistCount = scratchlistCount,
                         onOpenScratchlist = if (viewModel.scratchlistEnabled) onOpenScratchlist else null,
-                        onForkCurrent = if (state.historyAvailability.forkCurrent) {
-                            { viewModel.history.request(app.hapi.companion.feature.chat.history.HistoryKind.ForkCurrent) }
-                        } else null,
-                        historyEnabled = state.historyAvailability.ready && !historyState.pending,
                         onRename = { renameDialogOpen = true },
                         onReopen = viewModel::reopenSession,
                         onDelete = { deleteDialogOpen = true },
@@ -444,7 +440,7 @@ internal fun ChatScreen(
     }
     app.hapi.companion.feature.chat.annotations.AnnotationDialog(viewModel.annotations)
     app.hapi.companion.feature.chat.history.ConversationHistoryDialog(
-        historyState, viewModel.history::confirm, viewModel.history::confirmFallback, viewModel.history::dismiss,
+        historyState, viewModel.history::confirm, viewModel.history::dismiss,
     )
     if (deleteDialogOpen) {
         DeleteSessionDialog(
@@ -464,10 +460,8 @@ internal fun ChatScreen(
  * sessions; Delete last.
  */
 @Composable
-private fun SessionOverflowMenu(
+internal fun SessionOverflowMenu(
     active: Boolean,
-    onForkCurrent: (() -> Unit)? = null,
-    historyEnabled: Boolean = false,
     onRename: () -> Unit,
     onReopen: () -> Unit,
     onDelete: () -> Unit,
@@ -484,10 +478,6 @@ private fun SessionOverflowMenu(
         Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.chat_session_actions))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-        onForkCurrent?.let { fork ->
-            DropdownMenuItem(text = { Text(stringResource(R.string.history_fork_current)) }, enabled = historyEnabled,
-                onClick = { open = false; fork() })
-        }
         DropdownMenuItem(
             text = { Text(stringResource(R.string.chat_open_files)) },
             leadingIcon = { Icon(FolderGlyph, contentDescription = null) },

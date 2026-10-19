@@ -9,7 +9,7 @@
     <string name="history_rewind_title">Rewind before this message?</string>
     <string name="history_rewind_body">This removes this message and all later conversation history permanently. Workspace files keep their current contents.</string>
     <string name="history_fallback_title">Rewind unavailable</string>
-    <string name="history_fallback_body">The native history boundary is ambiguous. HAPI did not rewind this session. Fork before this message instead?</string>
+    <string name="history_fallback_body">The native history boundary is ambiguous. HAPI did not rewind this session. To fork the current history, return to the session list, long-press the session and choose Fork session.</string>
     <string name="history_refresh_title">Refresh conversation history</string>
     <string name="history_refresh_body">The rewind result needs reconciliation. Refresh from the Hub before continuing; this does not submit another rewind.</string>
     <string name="history_refresh">Refresh history</string>

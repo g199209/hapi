@@ -3,7 +3,6 @@ package app.hapi.companion.feature.sessions
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -106,6 +105,9 @@ fun SessionListScreen(
     onNewSession: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val forkState by viewModel.fork.state.collectAsState()
+    val archiving by viewModel.archiving.collectAsState()
+    val archiveFailures by viewModel.archiveFailures.collectAsState()
     val contentFilter by viewModel.filters.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     // Keep folds even when filtering temporarily removes the entire list.
@@ -130,6 +132,7 @@ fun SessionListScreen(
                     is SessionListError.RenameFailed -> R.string.sessions_error_rename
                     is SessionListError.DeleteFailed -> R.string.sessions_error_delete
                     is SessionListError.ReopenFailed -> R.string.sessions_error_reopen
+                    is SessionListError.ForkFailed -> R.string.history_failed
                     is SessionListError.MachinesRefreshFailed -> R.string.sessions_error_machines
                 },
             )
@@ -149,6 +152,14 @@ fun SessionListScreen(
         viewModel.reopened.collect { sessionId ->
             viewModel.onSessionOpened(sessionId)
             onOpenSession(sessionId)
+        }
+    }
+
+    LaunchedEffect(forkState.dialog.forkedSessionId) {
+        forkState.dialog.forkedSessionId?.let { child ->
+            viewModel.onSessionOpened(child)
+            onOpenSession(child)
+            viewModel.fork.acknowledgeFork(child)
         }
     }
 
@@ -200,7 +211,10 @@ fun SessionListScreen(
                                 viewModel.onSessionOpened(sessionId)
                                 onOpenSession(sessionId)
                             },
-                            onLongPress = { sheetRow = it },
+                            onLongPress = { row -> viewModel.fork.select(row.id, row.title); sheetRow = row },
+                            onArchive = viewModel::archiveSession,
+                            archiving = archiving,
+                            archiveFailures = archiveFailures,
                         )
                     }
                 }
@@ -228,7 +242,13 @@ fun SessionListScreen(
     sheetRow?.let { row ->
         SessionActionsSheet(
             row = row,
-            onDismiss = { sheetRow = null },
+            onDismiss = { sheetRow = null; viewModel.fork.dismiss() },
+            onFork = if (forkState.sessionId == row.id && forkState.showAction) {
+                { viewModel.fork.request(); sheetRow = null }
+            } else null,
+            forkEnabled = forkState.ready && !forkState.loading &&
+                state.rows.firstOrNull { it.id == row.id }?.summary?.let { it.active && !it.thinking } == true,
+            archiveEnabled = row.id !in archiving,
             onMarkUnread = { viewModel.markUnread(row.id); sheetRow = null },
             onCopyReference = {
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(app.hapi.companion.feature.chat.composer.sessionReference(row.title, row.id)))
@@ -256,6 +276,9 @@ fun SessionListScreen(
             },
         )
     }
+    app.hapi.companion.feature.chat.history.ConversationHistoryDialog(
+        forkState.dialog, viewModel.fork::confirm, viewModel.fork::dismiss,
+    )
     renameRow?.let { row ->
         RenameSessionDialog(
             initialName = row.summary.metadata?.name ?: row.title,
@@ -287,13 +310,16 @@ private fun SessionGroups(
     onToggleGroup: (String) -> Unit,
     onOpen: (String) -> Unit,
     onLongPress: (SessionRowUi) -> Unit,
+    onArchive: (String) -> Unit,
+    archiving: Set<String>,
+    archiveFailures: Map<String, Long>,
 ) {
     val globalPins = state.rows.filter { it.summary.globalPinned == true }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
         if (globalPins.isNotEmpty()) {
             item(key = "global-pins") { SectionHeader(stringResource(R.string.sessions_section_pinned)) }
             items(globalPins, key = { "session:${it.id}" }) { row ->
-                SessionRow(row, onOpen, onLongPress)
+                SessionRow(row, onOpen, onLongPress, onArchive, row.id in archiving, archiveFailures[row.id] ?: 0, Modifier.animateItem())
             }
         }
         state.groups.forEach { group ->
@@ -321,7 +347,8 @@ private fun SessionGroups(
                     // Directory/machine belong to the group header; retain only
                     // worktree identity on child rows, avoiding repeated paths.
                     val worktree = row.summary.metadata?.worktree
-                    SessionRow(row.copy(meta = worktree?.name?.ifBlank { worktree.branch }, machine = null), onOpen, onLongPress)
+                    SessionRow(row.copy(meta = worktree?.name?.ifBlank { worktree.branch }, machine = null), onOpen, onLongPress,
+                        onArchive, row.id in archiving, archiveFailures[row.id] ?: 0, Modifier.animateItem())
                 }
             }
         }
@@ -375,72 +402,77 @@ private fun SessionRow(
     row: SessionRowUi,
     onOpen: (String) -> Unit,
     onLongPress: (SessionRowUi) -> Unit,
+    onArchive: (String) -> Unit = {},
+    archiving: Boolean = false,
+    archiveFailure: Long = 0,
+    modifier: Modifier = Modifier,
 ) {
     val summary = row.summary
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = { onOpen(row.id) },
-                onLongClick = { onLongPress(row) },
-            )
-            // 8dp keeps the old content-to-gap rhythm: rows shrank from three
-            // text lines to two, and the unchanged 10dp read as oversized
-            // gaps between the now-shorter items (device feedback).
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            // Dimming expresses "disconnected" (web parity): connected is the
-            // resting state here, so only the exception gets marked — no
-            // per-row presence dot.
-            .alpha(if (summary.active) 1f else 0.5f),
+    SessionArchiveSwipe(
+        row.id, SessionListViewModel.canArchive(summary), archiving, archiveFailure,
+        onClick = { onOpen(row.id) }, onMenu = { onLongPress(row) }, onArchive = { onArchive(row.id) }, modifier = modifier,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AgentFlavorIcon(row.flavor, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            // One weighted element only: the title takes ALL leftover
-            // width (start-aligned, ellipsis on true overflow). Splitting
-            // the slack with a weighted trailing spacer truncated even
-            // short names at ~half the row (device-observed).
-            Text(
-                text = row.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (row.unread) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (summary.active && summary.thinking) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                // 8dp keeps the old content-to-gap rhythm: rows shrank from three
+                // text lines to two, and the unchanged 10dp read as oversized
+                // gaps between the now-shorter items (device feedback).
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                // Dimming expresses "disconnected" (web parity): connected is the
+                // resting state here, so only the exception gets marked — no
+                // per-row presence dot.
+                .alpha(if (summary.active) 1f else 0.5f),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AgentFlavorIcon(row.flavor, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 1.5.dp,
-                    color = Color(0xFF34C759),
+                // One weighted element only: the title takes ALL leftover
+                // width (start-aligned, ellipsis on true overflow). Splitting
+                // the slack with a weighted trailing spacer truncated even
+                // short names at ~half the row (device-observed).
+                Text(
+                    text = row.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (row.unread) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (summary.active && summary.thinking) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 1.5.dp,
+                        color = Color(0xFF34C759),
+                    )
+                }
+                if (row.unread) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    UnreadDot()
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = localizedRelativeAge(summary.updatedAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (row.unread) {
-                Spacer(modifier = Modifier.width(6.dp))
-                UnreadDot()
+            // Summary directly under the title (its prose continuation); the
+            // `project · machine` meta closes the row as a footer.
+            row.subtitle?.let { subtitle ->
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = localizedRelativeAge(summary.updatedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            MetaLine(row)
+            BadgeLine(summary)
         }
-        // Summary directly under the title (its prose continuation); the
-        // `project · machine` meta closes the row as a footer.
-        row.subtitle?.let { subtitle ->
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
-        MetaLine(row)
-        BadgeLine(summary)
-    }
 }
 
 // `project · worktree · machine`, composed in the ViewModel (machine only
@@ -601,6 +633,9 @@ internal fun SessionActionsSheet(
     onRename: () -> Unit,
     onReopen: () -> Unit,
     onDelete: () -> Unit,
+    onFork: (() -> Unit)? = null,
+    forkEnabled: Boolean = false,
+    archiveEnabled: Boolean = true,
 ) {
     val summary = row.summary
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -612,6 +647,7 @@ internal fun SessionActionsSheet(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         HorizontalDivider()
+        onFork?.let { SheetAction(stringResource(R.string.history_fork_current), enabled = forkEnabled, onClick = it) }
         if (summary.pinned == true || summary.globalPinned == true) {
             SheetAction(stringResource(R.string.sessions_action_unpin)) { onSetPinMode(PinMode.None) }
         }
@@ -627,8 +663,8 @@ internal fun SessionActionsSheet(
         if (!summary.active) {
             SheetAction(stringResource(R.string.sessions_action_reopen), onClick = onReopen)
         }
-        if (!SessionListViewModel.isArchived(summary) && (summary.active || summary.metadata?.lifecycleState in listOf("running", "idle"))) {
-            SheetAction(stringResource(R.string.sessions_action_archive), destructive = true, onClick = onArchive)
+        if (SessionListViewModel.canArchive(summary)) {
+            SheetAction(stringResource(R.string.sessions_action_archive), destructive = true, enabled = archiveEnabled, onClick = onArchive)
         }
         SheetAction(stringResource(R.string.sessions_action_delete), destructive = true, onClick = onDelete)
         Spacer(modifier = Modifier.size(16.dp))
@@ -636,15 +672,19 @@ internal fun SessionActionsSheet(
 }
 
 @Composable
-private fun SheetAction(text: String, destructive: Boolean = false, onClick: () -> Unit) {
+private fun SheetAction(text: String, destructive: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     ListItem(
         headlineContent = {
             Text(
                 text = text,
-                color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified,
+                color = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    destructive -> MaterialTheme.colorScheme.error
+                    else -> Color.Unspecified
+                },
             )
         },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     )
 }
 

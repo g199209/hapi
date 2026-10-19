@@ -1,0 +1,5 @@
+<resources>
+    <string name="sessions_swipe_release">Release to archive</string>
+    <string name="sessions_swipe_archiving">Archiving…</string>
+    <string name="sessions_swipe_archived">Archived</string>
+</resources>

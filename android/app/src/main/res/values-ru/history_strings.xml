@@ -9,7 +9,7 @@
     <string name="history_rewind_title">Rewind до этого сообщения?</string>
     <string name="history_rewind_body">Это навсегда удалит это сообщение и всю последующую history. Файлы workspace сохранят текущее содержимое.</string>
     <string name="history_fallback_title">Rewind недоступен</string>
-    <string name="history_fallback_body">Native history boundary неоднозначна. HAPI не выполнил Rewind. Сделать Fork до этого сообщения?</string>
+    <string name="history_fallback_body">Native history boundary неоднозначна. HAPI не выполнил Rewind. Чтобы сделать Fork текущей history, вернитесь к списку сессий, удерживайте сессию и выберите Fork session.</string>
     <string name="history_refresh_title">Обновить conversation history</string>
     <string name="history_refresh_body">Для продолжения нужно перечитать history из Hub. Обновление не отправит повторный Rewind.</string>
     <string name="history_refresh">Обновить history</string>

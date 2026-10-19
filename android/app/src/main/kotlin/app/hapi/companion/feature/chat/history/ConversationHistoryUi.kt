@@ -23,16 +23,9 @@ fun MessageHistoryActions(block: UserTextBlock) {
     val interactions = LocalConversationHistory.current ?: return
     val localId = block.localId ?: return
     val history = interactions.availability
-    val fork = history.supports(HistoryKind.ForkBefore, localId)
     val rewind = history.supports(HistoryKind.RewindBefore, localId)
-    if (!fork && !rewind) return
+    if (!rewind) return
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (fork) TextButton(
-            onClick = { interactions.request(HistoryKind.ForkBefore, localId, block.text) },
-            enabled = history.ready && !interactions.pending,
-            modifier = Modifier.testTag("history-fork-$localId"),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-        ) { Text(stringResource(R.string.history_fork), style = MaterialTheme.typography.labelMedium) }
         if (rewind) TextButton(
             onClick = { interactions.request(HistoryKind.RewindBefore, localId, block.text) },
             enabled = history.ready && !interactions.pending,
@@ -46,7 +39,6 @@ fun MessageHistoryActions(block: UserTextBlock) {
 fun ConversationHistoryDialog(
     state: HistoryUi,
     onConfirm: () -> Unit,
-    onFallback: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val request = state.request ?: return
@@ -78,19 +70,18 @@ fun ConversationHistoryDialog(
                 if (state.pending) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
-        confirmButton = {
+        confirmButton = { if (!state.offerFork) {
             TextButton(
-                onClick = if (state.offerFork) onFallback else onConfirm,
+                onClick = onConfirm,
                 enabled = !state.pending && state.error?.kind != HistoryErrorKind.Stale,
                 modifier = Modifier.testTag("history-confirm"),
             ) { Text(stringResource(when {
                 state.pending -> R.string.history_working
-                state.offerFork -> R.string.history_fork
                 state.refreshOnly -> R.string.history_refresh
                 rewind -> R.string.history_rewind
                 else -> R.string.history_fork
             })) }
-        },
+        } },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !state.pending, modifier = Modifier.testTag("history-cancel")) { Text(stringResource(R.string.feature_cancel)) } },
     )
 }

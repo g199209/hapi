@@ -1,0 +1,5 @@
+<resources>
+    <string name="sessions_swipe_release">Отпустите</string>
+    <string name="sessions_swipe_archiving">Архивация…</string>
+    <string name="sessions_swipe_archived">В архиве</string>
+</resources>

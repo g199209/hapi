@@ -23,6 +23,12 @@ differences, pairing and features currently available through the web.
   Opening the session clears its manual unread marker. Delete requires an inactive session. Resume or
   Reopen can return another session ID: seed its window, move the draft and
   replace navigation with the returned ID.
+- **Archive gesture:** hold a session, drag left and release beyond the threshold.
+  A green archive background, release hint and haptics show readiness; short,
+  canceled, early or rightward drags do not archive. Vertical scrolling keeps
+  priority. A stationary hold opens the existing action menu on release.
+  Pending requests disable duplicate actions; failures restore the row and show
+  the existing error snackbar. Archived rows retain their view/reopen menu.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Image/file drafts retain their thumbnail,
   upload path and pending retry bytes per Hub/session. Preparation and uploads
@@ -327,10 +333,12 @@ does not translate them either, and terminology parity with the web wins.
 ## Fork and Rewind
 
 Conversation history actions follow `metadata.capabilities.conversationHistory`
-and the Hub's `conversationHistoryPoints` catalog. **Session actions → Fork session**
-creates an independent session from current history. Eligible invoked user messages
-show **Fork** / **Rewind** below the bubble; these target the point **before** that
-message, using its Hub `localId`. Text long-press remains text selection.
+and the Hub's `conversationHistoryPoints` catalog. **Long-press a session in the
+session list → Fork session** is the only Fork entry. It creates an independent
+session from the current full history and opens the child. Chat menus and message
+bubbles do not offer Fork. Eligible invoked user messages still show **Rewind**,
+targeting the point **before** that message, using its Hub `localId`. Text long-press
+remains text selection.
 
 Actions require an active idle session without queued messages; legacy terminal
 control and diverged history also disable them. Shared Codex advertises Fork current
@@ -339,13 +347,15 @@ historical actions after the window trims its tail.
 
 A confirmation dialog retains the chosen point outside recycled rows and across
 rotation, then rechecks capabilities, native locators and epoch before submitting.
-Fork opens the returned child with its own history/draft, preserving the original
-chat on Back. The full source window is never seeded into a historical child.
+Fork preserves the source draft and opens the returned child with its own
+history/draft; Back returns to the session list. List confirmation rechecks the
+source capability, idle state and message clock before submitting. The Hub also
+checks queued inputs and native readiness.
 Rewind removes the chosen message and later conversation history; workspace files
 keep their current contents. It reloads the authoritative window and epoch even
 when SSE is silent, preserving the composer draft. Completed or uncertain rewinds
 retry reconciliation only, not the mutation. An ambiguous native boundary offers
-an explicit Fork confirmation when that capability remains available.
+instructions to use the session-list menu, without another Fork button.
 
 ## Tool previews
 

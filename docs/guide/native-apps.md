@@ -114,8 +114,9 @@ send it automatically. See [Voice input and assistant](./voice-assistant.md).
 
 Use the web app for the remote terminal, Work Graph, realtime dictation and
 voice assistant, and full session export. Android provides session Fork/Rewind
-according to agent capabilities: Fork session is in the chat menu; Fork/Rewind
-below an eligible user message target the point before that message. Shared
+according to agent capabilities: long-press a session in the session list and
+choose **Fork session** to fork its current full history. This is the only Fork
+entry; eligible user messages can still offer Rewind before that message. Shared
 Codex supports Fork, with Rewind disabled. Both actions ask for confirmation;
 Rewind removes later conversation history while leaving workspace files intact.
 iOS uses the web for these history actions and for the skills picker. Android
@@ -203,3 +204,12 @@ Codex App question-answer replies display the question as expandable context and
 the answer as selectable text, with internal IDs and JSON hidden. The full-message
 reader and queued previews use readable text; original message content remains
 available through raw copy/export.
+
+### Android swipe to archive
+
+Hold a session in the list, then drag left. The row reveals a green archive icon;
+crossing the threshold adds a release hint and haptic feedback. Release to archive,
+or drag back before releasing to cancel. Short or canceled gestures spring back.
+Holding and releasing without dragging opens the session action menu, including
+Fork. Normal taps and vertical scrolling keep their usual behavior. Archive errors
+restore the row; archived sessions remain available in the Archived tab.
