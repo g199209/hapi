@@ -142,8 +142,10 @@ private class InteractionSessionStore : SessionDetailStore {
 
     var reopenResult: ReopenSessionResponse? = null
     var reopenFailure: Exception? = null
+    var reopenGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     override suspend fun reopenSession(sessionId: String): ReopenSessionResponse {
         record("reopen:$sessionId")
+        reopenGate?.await()
         reopenFailure?.let { throw it }
         return reopenResult ?: ReopenSessionResponse(sessionId = sessionId, resumed = true)
     }
@@ -1000,6 +1002,33 @@ class ChatViewModelInteractionTest {
 
     // ---------------------------------------------------------- queued bar --
 
+    @Test fun `compaction explains uncertain delivery without marking the message consumed`() = runTest {
+        val compact = app.hapi.protocol.wire.CodexCompaction("turn", "compact")
+        val harness = InteractionHarness(this, detail(thinking = true, agentState = AgentState(codexCompaction = compact)))
+        harness.viewModel.start()
+        val window = harness.window()
+        window.ingestSseMessages(listOf(app.hapi.protocol.window.WindowMessage(queuedServerRow("srv-compact", "l-compact", "follow up"))))
+        window.updateStatus("l-compact", MessageStatus.Indeterminate)
+        val row = harness.viewModel.queuedRows.first { it.any { it.waitingForCompaction } }.single()
+        assertTrue(row.indeterminate)
+        assertFalse(row.canSteer)
+        assertFalse(harness.viewModel.composer.first { !it.canSteer }.canSteer)
+        harness.viewModel.uiState.first { it.header.compacting }
+        var notice: ChatNotice? = null
+        val listener = launch(start = CoroutineStart.UNDISPATCHED) {
+            notice = harness.viewModel.events.filterIsInstance<ChatEvent.Notice>().first().notice
+        }
+        harness.viewModel.retryIndeterminateMessage("srv-compact")
+        listener.join()
+        assertEquals(ChatNotice.CompactionWaiting, notice)
+        harness.sessionStore.setDetail(detail(thinking = true))
+        val after = harness.viewModel.queuedRows.first { it.isNotEmpty() && !it.single().waitingForCompaction }.single()
+        assertTrue(after.indeterminate)
+        harness.viewModel.uiState.first { !it.header.compacting }
+        window.markConsumed(listOf("l-compact"), 900)
+        harness.viewModel.queuedRows.first { it.isEmpty() }
+    }
+
     /** Server-echoed queued row (id != localId, explicit `invokedAt: null`). */
     private fun queuedServerRow(id: String, localId: String, text: String): DecryptedMessage =
         DecryptedMessage(
@@ -1381,6 +1410,33 @@ class ChatViewModelInteractionTest {
         testScheduler.advanceUntilIdle()
 
         assertTrue(events.none { it is ChatEvent.SessionSuperseded })
+    }
+
+    @Test
+    fun `reopen shows restoring before a bridge exists and clears it on failure`() = runTest {
+        val harness = InteractionHarness(this, detail(active = false))
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        harness.sessionStore.reopenGate = gate
+        harness.sessionStore.reopenFailure = RuntimeException("startup failed")
+        harness.viewModel.start()
+        harness.viewModel.reopenSession()
+        assertEquals("connecting", harness.viewModel.restoration.first { it != null }?.phase)
+        assertTrue(harness.viewModel.composer.first { it.isSending }.isSending)
+        harness.viewModel.reopenSession()
+        assertEquals(1, harness.sessionStore.calls.value.count { it == "reopen:$IX_SESSION" })
+        gate.complete(Unit)
+        assertNull(harness.viewModel.restoration.first { it == null })
+        assertFalse(harness.viewModel.composer.first { !it.isSending }.isSending)
+    }
+
+    @Test
+    fun `live restore progress survives view recreation but inactive stale state is ignored`() = runTest {
+        val progress = app.hapi.protocol.wire.CodexRestoreProgress("history", 1, 100)
+        val harness = InteractionHarness(this, detail(active = true, agentState = AgentState(codexRestore = progress)))
+        harness.viewModel.start()
+        assertEquals(progress, harness.viewModel.restoration.first { it != null })
+        harness.sessionStore.setDetail(detail(active = false, agentState = AgentState(codexRestore = progress)))
+        assertNull(harness.viewModel.restoration.first { it == null })
     }
 
     @Test

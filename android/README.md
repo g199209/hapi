@@ -29,6 +29,19 @@ differences, pairing and features currently available through the web.
   priority. A stationary hold opens the existing action menu on release.
   Pending requests disable duplicate actions; failures restore the row and show
   the existing error snackbar. Archived rows retain their view/reopen menu.
+- **Codex restoration:** reopening or sending to an inactive session immediately
+  shows Restoring in the existing header status and a phase panel above the
+  composer. Runner progress reports turns read, processed history items and
+  sub-agents; only phases with known totals show a progress fraction. Unknown
+  totals use an indeterminate indicator. Progress follows versioned agentState
+  over SSE, survives navigation, and clears on readiness/disconnection; duplicate
+  sends/reopens are disabled while restoring. Lifecycle HTTP calls allow the
+  Hub's extended startup budget while ordinary calls retain their timeout.
+- **Codex compaction:** the existing header status shows compaction while native
+  `contextCompaction` is active. Queued messages show a neutral waiting hint;
+  Retry/Steer are hidden during compaction. Completion removes only the hint:
+  delivery still requires the native acknowledgement/history. Versioned state
+  is restored on reconnect and cleared on idle, disconnect or shutdown.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Image/file drafts retain their thumbnail,
   upload path and pending retry bytes per Hub/session. Preparation and uploads
@@ -433,6 +446,15 @@ Chat Markdown renders TeX inline (`$…$`, `\(…\)`) and display math (`$$…$$
 and a native renderer. Display equations scroll horizontally at phone widths.
 Code spans/fences and escaped currency remain literal. Unclosed streaming math
 and unsupported TeX remain readable as source.
+
+The minified Release must retain JLatexMath's `NewCommandMacro` constructor and
+`executeMacro` entry point: built-in macros such as `operatorname` resolve them
+through reflection. Include named-operator formulas in the signed Release smoke
+check; Debug rendering alone does not verify these R8 rules.
+
+`MathDrawable` draws the compiled icon through `FilledMathGraphics`: text has a
+dedicated FILL Paint so frame/line strokes cannot turn subsequent glyphs hollow.
+Keep boxed fractions/delimiters in native pixel regressions and Release checks.
 
 Long-press a formula to copy its complete TeX. Formula placeholders also
 participate in text selections starting in the surrounding prose. Copying a

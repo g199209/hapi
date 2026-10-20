@@ -45,6 +45,7 @@ import type { RpcRegistry } from '../socket/rpcRegistry'
 
 const DEFAULT_RPC_TIMEOUT_MS = 30_000
 const MODEL_LIST_RPC_TIMEOUT_MS = 120_000
+const SPAWN_RPC_TIMEOUT_MS = 120_000
 
 /**
  * tiann/hapi#916: thrown by {@link RpcGateway.rpcCall} when the target CLI is
@@ -275,7 +276,8 @@ export class RpcGateway {
                     copilotAgentMode,
                     startingMode,
                     forkSession: forkSession === true
-                }
+                },
+                SPAWN_RPC_TIMEOUT_MS
             )
             if (result && typeof result === 'object') {
                 const obj = result as Record<string, unknown>

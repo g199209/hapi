@@ -11,6 +11,15 @@ class ChatSessionStatusTest {
         assertEquals(ChatSessionStatus.Working, chatSessionStatus(header.copy(thinking = true), false))
     }
 
+    @Test fun compactionUsesExistingStatusAndRespectsConnectionAndPendingActions() {
+        val compact = header.copy(thinking = true, compacting = true)
+        assertEquals(ChatSessionStatus.Compacting, chatSessionStatus(compact, false))
+        assertEquals(ChatSessionStatus.NeedsApproval, chatSessionStatus(compact.copy(pendingRequestKinds = listOf("permission")), false))
+        assertEquals(ChatSessionStatus.Restoring, chatSessionStatus(compact.copy(restoring = true), false))
+        assertEquals(ChatSessionStatus.Inactive, chatSessionStatus(compact.copy(active = false), false))
+        assertEquals(ChatSessionStatus.Reconnecting, chatSessionStatus(compact, true))
+    }
+
     @Test fun pendingActionsTakePriorityOverTheBusyFlag() {
         val busy = header.copy(thinking = true)
         assertEquals(ChatSessionStatus.NeedsInput, chatSessionStatus(busy.copy(pendingRequestKinds = listOf("input")), false))

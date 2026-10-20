@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { decideUntrackedRunnerWebhook } from './lateRunnerWebhook'
 
 describe('decideUntrackedRunnerWebhook', () => {
-    it('adopts shared Codex roots instead of killing (siblings)', () => {
+    it('adopts shared roots after restart but ignores a generation already being cleaned up', () => {
         expect(decideUntrackedRunnerWebhook({
             concurrentClients: true,
             timedOutByThisRunner: false,
@@ -10,7 +10,7 @@ describe('decideUntrackedRunnerWebhook', () => {
         expect(decideUntrackedRunnerWebhook({
             concurrentClients: true,
             timedOutByThisRunner: true,
-        })).toBe('adopt')
+        })).toBe('ignore')
     })
 
     it('kills nonshared CLIs that this runner timed out', () => {

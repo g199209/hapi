@@ -24,6 +24,19 @@ data class AgentState(
     val completedRequests: Map<String, AgentStateCompletedRequest>? = null,
     /** Current actionable shared Codex proposal's tool-call id; null withdraws its menu. */
     val codexPlanProposalId: String? = null,
+    val codexRestore: CodexRestoreProgress? = null,
+    val codexCompaction: CodexCompaction? = null,
+)
+
+@Serializable
+data class CodexCompaction(val turnId: String, val itemId: String)
+
+@Serializable
+data class CodexRestoreProgress(
+    val phase: String,
+    val startedAt: Long,
+    val completed: Int? = null,
+    val total: Int? = null,
 )
 
 /** A pending tool-permission / user-input request (`AgentStateRequestSchema`). */

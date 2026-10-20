@@ -54,13 +54,14 @@ private data class MathKey(val latex: String, val pixels: Float, val color: Int,
 /** TeX's font/parser caches are shared. Serialize compilation off the UI thread;
  * compiled drawables are reused on the UI thread, including failed parses. */
 private object MathDrawableCache {
-    private val entries = LinkedHashMap<MathKey, JLatexMathDrawable?>(128, 0.75f, true)
-    @Synchronized fun compile(key: MathKey): JLatexMathDrawable? {
+    private val entries = LinkedHashMap<MathKey, MathDrawable?>(128, 0.75f, true)
+    @Synchronized fun compile(key: MathKey): MathDrawable? {
         if (entries.containsKey(key)) return entries[key]
         val drawable = if (key.latex.length > 8192) null else try {
             JLatexMathDrawable.builder((if (key.display) "\\displaystyle " else "\\textstyle ") + key.latex)
                 .textSize(key.pixels).color(key.color).padding(1).build()
                 .takeIf { it.intrinsicWidth in 1..32767 && it.intrinsicHeight in 1..16383 }
+                ?.let { MathDrawable(it.icon()) }
         } catch (error: Exception) {
             Log.w("HapiMath", "TeX rendering failed", error)
             null
@@ -89,7 +90,7 @@ internal fun rememberMathContent(parent: Node, style: TextStyle): MathContent {
     val pixels = with(density) { style.fontSize.toPx() }
     val color = if (style.color == Color.Unspecified) LocalContentColor.current else style.color
     val keys = remember(nodes, pixels, color) { nodes.map { MathKey(it.latex, pixels, color.toArgb(), it.display) } }
-    val compiled by produceState<Map<MathKey, JLatexMathDrawable?>>(emptyMap(), keys) {
+    val compiled by produceState<Map<MathKey, MathDrawable?>>(emptyMap(), keys) {
         value = withContext(Dispatchers.Default) { keys.associateWith { MathDrawableCache.compile(it) } }
     }
     return remember(nodes, keys, compiled, density) {
@@ -112,7 +113,7 @@ internal fun rememberMathContent(parent: Node, style: TextStyle): MathContent {
 /** An equation is one visual object. Its long-press action copies the complete
  * TeX; text selections starting in prose can also include that object. */
 @Composable
-private fun FormulaCanvas(drawable: JLatexMathDrawable, node: InlineMath) {
+private fun FormulaCanvas(drawable: MathDrawable, node: InlineMath) {
     val clipboard = LocalClipboard.current
     val toolbar = LocalTextToolbar.current
     val scope = rememberCoroutineScope()

@@ -122,6 +122,8 @@ data class ChatHeaderUi(
     val pendingRequestKinds: List<String> = emptyList(),
     val backgroundTaskCount: Int = 0,
     val lifecycleState: String? = null,
+    val restoring: Boolean = false,
+    val compacting: Boolean = false,
 )
 
 /** Optimistic-permission UI state layered over the reduced blocks (M3b). */
@@ -136,6 +138,7 @@ enum class PermissionRowOverride {
 /** What [ChatScreen] renders. */
 data class ChatUiState(
     val sessionId: String,
+    val restoreProgress: app.hapi.protocol.wire.CodexRestoreProgress? = null,
     val header: ChatHeaderUi,
     /** Raw agent flavor id (`claude`, `codex`, …); drives permission button sets. */
     val flavor: String?,
@@ -190,6 +193,7 @@ data class QueuedRowUi(
     val canSteer: Boolean,
     /** Native delivery outcome is unknown; show explicit retry instead of normal Steer. */
     val indeterminate: Boolean = false,
+    val waitingForCompaction: Boolean = false,
 )
 
 /** Session config sheet model (M3b switching). */
@@ -232,6 +236,8 @@ sealed interface ChatEvent {
  * behavior).
  */
 sealed interface ChatNotice {
+    data object CompactionWaiting : ChatNotice
+    data object DeliveryResolving : ChatNotice
     data object DraftParked : ChatNotice
     data object ScratchlistFull : ChatNotice
     data object ScratchlistParkFailed : ChatNotice
@@ -425,6 +431,7 @@ class ChatViewModel(
     /** Derived text for toolbar/slash flows and persistence, never fed back to BasicTextField. */
     private val composerText = MutableStateFlow("")
     private val sendInFlight = MutableStateFlow(false)
+    private val restoreRequests = MutableStateFlow(0)
     val annotations = AnnotationDrafts { saveComposerDraft() }
 
     /**
@@ -544,6 +551,19 @@ class ChatViewModel(
         .flowOn(pipelineDispatcher)
         .stateIn(scope, SharingStarted.Eagerly, initialState())
 
+    val restoration = combine(uiState, restoreRequests) { state, requests ->
+        state.restoreProgress ?: if (requests > 0) app.hapi.protocol.wire.CodexRestoreProgress("connecting", 0) else null
+    }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    private val compacting = sessionStore.sessionDetail(sessionId).map { detail ->
+        detail?.active == true && detail.agentState?.codexCompaction != null
+    }.stateIn(scope, SharingStarted.Eagerly, false)
+
+    private suspend fun <T> whileRestoring(action: suspend () -> T): T {
+        restoreRequests.update { it + 1 }
+        try { return action() } finally { restoreRequests.update { it - 1 } }
+    }
+
     /** Composer bar state (text is VM-owned so drafts and edit-prefill flow through it). */
     val composer: StateFlow<ComposerUiState> = combine(
         composerText,
@@ -559,15 +579,17 @@ class ChatViewModel(
             focusRequest = focusRequest,
             hasAnnotations = comments.isNotEmpty(),
         )
-    }.stateIn(scope, SharingStarted.Eagerly, ComposerUiState(text = "", isSending = false, canSteer = false))
+    }.combine(restoration) { state, progress -> state.copy(isSending = state.isSending || progress != null, canSteer = state.canSteer && progress == null) }
+        .combine(compacting) { state, active -> state.copy(canSteer = state.canSteer && !active) }
+        .stateIn(scope, SharingStarted.Eagerly, ComposerUiState(text = "", isSending = false, canSteer = false))
 
     /** Uninvoked sends for the queued bar, ordered like the web (immediate first, then scheduled). */
     @OptIn(ExperimentalCoroutinesApi::class)
     val queuedRows: StateFlow<List<QueuedRowUi>> = windowStore
         .filterNotNull()
         .flatMapLatest { store ->
-            combine(store.state, queuedOpPending, sessionStateFlow()) { window, opPending, session ->
-                buildQueuedRows(window, opPending, session.thinking)
+            combine(store.state, queuedOpPending, sessionStateFlow(), compacting) { window, opPending, session, compact ->
+                buildQueuedRows(window, opPending, session.thinking, compact)
             }
         }
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -1234,7 +1256,7 @@ class ChatViewModel(
         localId: String,
     ) {
         val targetSessionId = try {
-            api.resumeSession(sessionId, currentDetail()?.permissionMode).sessionId
+            whileRestoring { api.resumeSession(sessionId, currentDetail()?.permissionMode).sessionId }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
@@ -1337,7 +1359,7 @@ class ChatViewModel(
         if (!sessionOpPending.compareAndSet(expect = false, update = true)) return
         scope.launch {
             try {
-                val response = sessionStore.reopenSession(sessionId)
+                val response = whileRestoring { sessionStore.reopenSession(sessionId) }
                 if (response.sessionId != sessionId) {
                     messageWindows.seed(sessionId, response.sessionId)
                     drafts?.let { runCatching { it.move(sessionId, response.sessionId) } }
@@ -1394,6 +1416,7 @@ class ChatViewModel(
     }
 
     fun retryIndeterminateMessage(messageId: String) {
+        if (compacting.value) { _events.tryEmit(ChatEvent.Notice(ChatNotice.CompactionWaiting)); return }
         if (!queuedOpPending.compareAndSet(expect = false, update = true)) return
         scope.launch {
             try {
@@ -1412,7 +1435,7 @@ class ChatViewModel(
                     awaitWindowStore().removeMessage(messageId)
                     _events.tryEmit(ChatEvent.Notice(ChatNotice.CancelQueuedFailed("Message is no longer available")))
                 } else if (response.status == "retry-unavailable") {
-                    _events.tryEmit(ChatEvent.Notice(ChatNotice.CancelQueuedFailed("Delivery is still being resolved")))
+                    _events.tryEmit(ChatEvent.Notice(if (compacting.value) ChatNotice.CompactionWaiting else ChatNotice.DeliveryResolving))
                 }
             } catch (error: Exception) {
                 _events.tryEmit(ChatEvent.Notice(ChatNotice.CancelQueuedFailed(error.message)))
@@ -1504,6 +1527,7 @@ class ChatViewModel(
         window: MessageWindowState,
         opPending: Boolean,
         thinking: Boolean,
+        compacting: Boolean,
     ): List<QueuedRowUi> {
         val queued = window.messages.filter { it.isQueuedForInvocation }
         // Web `sortQueuedMessages`: immediate first (submission order), then
@@ -1523,9 +1547,10 @@ class ChatViewModel(
                 attachmentNames = preview.attachmentNames,
                 scheduledAt = row.wire.scheduledAt,
                 canAct = canAct,
-                canSteer = canAct && thinking && row.wire.scheduledAt == null
+                canSteer = canAct && thinking && !compacting && row.wire.scheduledAt == null
                     && row.status != MessageStatus.Indeterminate,
                 indeterminate = row.status == MessageStatus.Indeterminate,
+                waitingForCompaction = compacting && row.wire.scheduledAt == null,
             )
         }
     }
@@ -1963,6 +1988,7 @@ class ChatViewModel(
         return ChatUiState(
             sessionId = sessionId,
             header = buildHeader(inputs),
+            restoreProgress = inputs.detail?.takeIf { it.active }?.agentState?.codexRestore,
             historyAvailability = currentHistoryContext().availability,
             flavor = inputs.detail?.metadata?.flavor ?: inputs.summary?.metadata?.flavor,
             basePath = inputs.detail?.metadata?.path ?: inputs.summary?.metadata?.path,
@@ -2035,6 +2061,7 @@ class ChatViewModel(
             } else summary?.pendingRequestKinds.orEmpty(),
             backgroundTaskCount = if (detail != null) detail.backgroundTaskCount ?: 0 else summary?.backgroundTaskCount ?: 0,
             lifecycleState = detail?.metadata?.lifecycleState ?: summary?.metadata?.lifecycleState,
+            compacting = detail?.active == true && detail.agentState?.codexCompaction != null,
         )
     }
 

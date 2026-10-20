@@ -90,6 +90,8 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
     cleanups.push(async () => { await root.close(false); await rm(directory, { recursive: true, force: true }); });
     await root.prepare();
     await root.bind('thread', { model: 'mock', thread: { turns: [] } }, false);
+    // The runtime clears startup progress after its ready webhook.
+    root.restore.finish();
     const native = root.client as unknown as {
         initialized: boolean;
         thread: { id: string; turns: NativeTurn[]; name?: string | null; preview?: string };
@@ -412,4 +414,38 @@ it('keeps a later native rename when an earlier title-tool completion is still q
     await f.root.refresh();
     expect(f.metadata().name).toBe('Later native title');
     expect(f.native.thread.name).toBe('Later native title');
+});
+
+it('reads every history page using 100-turn batches without resuming the thread', async () => {
+    const f = await fixture();
+    const original = f.root.client.request.bind(f.root.client);
+    const request = vi.spyOn(f.root.client, 'request').mockImplementation(async (method, params) => {
+        if (method === 'thread/read') return { thread: { id: 'thread', historyMode: 'paginated' } };
+        if (method === 'thread/turns/list') return (params as Record<string, unknown>)?.cursor
+            ? { data: [{ id: 'b', items: [] }], nextCursor: null }
+            : { data: [{ id: 'a', items: [] }], nextCursor: 'next' };
+        return original(method, params);
+    });
+    const thread = await f.root.readThread();
+    expect((thread.turns as Array<{ id: string }>).map(turn => turn.id)).toEqual(['a', 'b']);
+    expect(request.mock.calls.filter(([method]) => method === 'thread/turns/list').map(([, params]) => params)).toEqual([
+        { threadId: 'thread', cursor: undefined, limit: 100, sortDirection: 'asc', itemsView: 'full' },
+        { threadId: 'thread', cursor: 'next', limit: 100, sortDirection: 'asc', itemsView: 'full' }
+    ]);
+    expect(request.mock.calls.some(([method]) => method === 'thread/resume')).toBe(false);
+});
+
+it('tracks compaction only for the root and withdraws steering until completion', async () => {
+    const f = await fixture();
+    f.native.notify('turn/started', { threadId: 'thread', turn: { id: 'turn' } });
+    f.native.notify('item/started', { threadId: 'child', turnId: 'turn', item: { type: 'contextCompaction', id: 'child-compact' } });
+    expect(f.state().codexCompaction).toBeNull();
+    f.native.notify('item/started', { threadId: 'thread', turnId: 'turn', item: { type: 'contextCompaction', id: 'root-compact' } });
+    expect(f.state().codexCompaction?.itemId).toBe('root-compact');
+    expect(f.state().steeringActive).toBe(false);
+    f.native.notify('item/completed', { threadId: 'child', turnId: 'turn', item: { type: 'contextCompaction', id: 'child-compact' } });
+    expect(f.state().codexCompaction?.itemId).toBe('root-compact');
+    f.native.notify('item/completed', { threadId: 'thread', turnId: 'turn', item: { type: 'contextCompaction', id: 'root-compact' } });
+    expect(f.state().codexCompaction).toBeNull();
+    expect(f.state().steeringActive).toBe(true);
 });

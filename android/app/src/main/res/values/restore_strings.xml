@@ -1,0 +1,9 @@
+<resources>
+    <string name="chat_status_restoring">Restoring session</string>
+    <string name="chat_restore_history">Reading history</string>
+    <string name="chat_restore_projecting">Processing history</string>
+    <string name="chat_restore_children">Restoring sub-agents</string>
+    <string name="chat_restore_syncing">Finishing sync</string>
+    <string name="chat_restore_turns">%1$d turns read</string>
+    <string name="chat_restore_seconds">%1$ds</string>
+</resources>

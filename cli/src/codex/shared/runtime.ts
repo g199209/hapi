@@ -218,6 +218,7 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
         assertRunning();
         roots.set(threadId, root);
         await root.bind(threadId, response, subscribe);
+        root.restore.report('syncing');
         assertRunning();
         // Cold-resumed threads predate the control connection's automatic
         // new-thread subscription. Subscribe once without changing settings.
@@ -226,6 +227,8 @@ export async function runSharedRuntime(options: SharedLaunchOptions, onReady?: (
         await root.session.flush();
         await persist();
         await notifyRunnerSessionStarted(root.session.sessionId, root.session.getMetadata() ?? root.bootstrap.metadata);
+        root.restore.finish();
+        await root.session.flush();
     };
     const create = (method: 'thread/start' | 'thread/fork', params: Record<string, unknown>, parent?: SharedCodexRoot, initialOptions?: SharedLaunchOptions): Promise<SharedCodexRoot> => operation(async () => {
         const root = await prepare(string(params.cwd) ?? launch.cwd, undefined, parent);

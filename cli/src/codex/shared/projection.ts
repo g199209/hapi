@@ -237,9 +237,12 @@ export class SharedCodexProjection {
         }
     }
 
-    async history(thread: unknown): Promise<void> {
+    async history(thread: unknown, progress?: (completed: number, total: number) => void): Promise<void> {
         const turns = record(thread).turns;
         if (!Array.isArray(turns)) return;
+        const total = turns.reduce((sum: number, turn: unknown) => sum + (Array.isArray(record(turn).items) ? (record(turn).items as unknown[]).length : 0), 0);
+        let completed = 0;
+        progress?.(completed, total);
         if (!this.parentThreadId && !this.excludedHistoryReasoning) {
             const excluded = this.hadHistory ? turns.flatMap(value => {
                 const items = record(value).items;
@@ -296,6 +299,8 @@ export class SharedCodexProjection {
                     await this.project('item/completed', params);
                 }
             }
+            completed += turn.items.length;
+            progress?.(completed, total);
         }
         // Repair sessions created while remote title projection was missing.
         // Recheck inside the metadata lock: live updates may still be queued,

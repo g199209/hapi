@@ -1,0 +1,7 @@
+<resources>
+    <string name="chat_status_compacting">Сжатие контекста</string>
+    <string name="chat_compaction_waiting">Ожидание завершения сжатия</string>
+    <string name="chat_delivery_unknown">Доставка сообщения не подтверждена</string>
+    <string name="chat_delivery_resolving">Доставка сообщения ещё проверяется</string>
+    <string name="chat_delivery_retry">Повторить</string>
+</resources>

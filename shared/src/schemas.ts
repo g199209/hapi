@@ -214,7 +214,16 @@ export const AgentStateCompletedRequestSchema = z.object({
 
 export type AgentStateCompletedRequest = z.infer<typeof AgentStateCompletedRequestSchema>
 
+export const CodexRestoreProgressSchema = z.object({
+    phase: z.enum(['connecting', 'history', 'projecting', 'children', 'syncing']),
+    startedAt: z.number().nonnegative(),
+    completed: z.number().int().nonnegative().optional(),
+    total: z.number().int().nonnegative().optional()
+})
+
 export const AgentStateSchema = z.object({
+    codexRestore: CodexRestoreProgressSchema.nullish(),
+    codexCompaction: z.object({ turnId: z.string(), itemId: z.string() }).nullish(),
     controlledByUser: z.boolean().nullish(),
     // Current actionable shared Codex proposal; content remains in the transcript.
     codexPlanProposalId: z.string().nullish(),

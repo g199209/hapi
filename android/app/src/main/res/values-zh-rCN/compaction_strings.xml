@@ -1,0 +1,7 @@
+<resources>
+    <string name="chat_status_compacting">正在 compaction</string>
+    <string name="chat_compaction_waiting">等待 compaction 完成</string>
+    <string name="chat_delivery_unknown">消息投递结果尚未确认</string>
+    <string name="chat_delivery_resolving">仍在确认消息投递结果</string>
+    <string name="chat_delivery_retry">重试</string>
+</resources>

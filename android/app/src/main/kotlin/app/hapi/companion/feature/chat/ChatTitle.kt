@@ -31,7 +31,7 @@ import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.wire.SummaryPatching
 
 internal enum class ChatSessionStatus {
-    Loading, LoadFailed, Reconnecting, Working, NeedsInput, NeedsApproval,
+    Loading, LoadFailed, Reconnecting, Restoring, Compacting, Working, NeedsInput, NeedsApproval,
     NeedsAttention, Background, Idle, Inactive, Archived,
 }
 
@@ -39,10 +39,12 @@ internal enum class ChatSessionStatus {
 internal fun chatSessionStatus(header: ChatHeaderUi, reconnecting: Boolean, loadFailed: Boolean = false): ChatSessionStatus = when {
     reconnecting -> ChatSessionStatus.Reconnecting
     !header.hasSessionInfo -> if (loadFailed) ChatSessionStatus.LoadFailed else ChatSessionStatus.Loading
+    header.restoring -> ChatSessionStatus.Restoring
     !header.active -> if (header.lifecycleState == "archived") ChatSessionStatus.Archived else ChatSessionStatus.Inactive
     header.pendingRequestKinds.containsAll(listOf(SummaryPatching.KIND_PERMISSION, SummaryPatching.KIND_INPUT)) -> ChatSessionStatus.NeedsAttention
     SummaryPatching.KIND_PERMISSION in header.pendingRequestKinds -> ChatSessionStatus.NeedsApproval
     SummaryPatching.KIND_INPUT in header.pendingRequestKinds -> ChatSessionStatus.NeedsInput
+    header.compacting -> ChatSessionStatus.Compacting
     header.thinking -> ChatSessionStatus.Working
     header.backgroundTaskCount > 0 -> ChatSessionStatus.Background
     else -> ChatSessionStatus.Idle
@@ -53,6 +55,8 @@ internal fun ChatTitle(header: ChatHeaderUi, reconnecting: Boolean, retry: () ->
     val status = chatSessionStatus(header, reconnecting, loadFailed)
     val label = stringResource(when (status) {
         ChatSessionStatus.Loading -> R.string.chat_status_loading
+        ChatSessionStatus.Restoring -> R.string.chat_status_restoring
+        ChatSessionStatus.Compacting -> R.string.chat_status_compacting
         ChatSessionStatus.LoadFailed -> R.string.chat_status_load_failed
         ChatSessionStatus.Reconnecting -> R.string.chat_reconnecting_retry
         ChatSessionStatus.Working -> R.string.chat_status_working
@@ -65,9 +69,9 @@ internal fun ChatTitle(header: ChatHeaderUi, reconnecting: Boolean, retry: () ->
         ChatSessionStatus.Archived -> R.string.chat_status_archived
     })
     val retryable = status == ChatSessionStatus.Reconnecting || status == ChatSessionStatus.LoadFailed
-    val spinning = status in setOf(ChatSessionStatus.Working, ChatSessionStatus.Background, ChatSessionStatus.Loading, ChatSessionStatus.Reconnecting)
+    val spinning = status in setOf(ChatSessionStatus.Compacting, ChatSessionStatus.Restoring, ChatSessionStatus.Working, ChatSessionStatus.Background, ChatSessionStatus.Loading, ChatSessionStatus.Reconnecting)
     val color = when (status) {
-        ChatSessionStatus.Working, ChatSessionStatus.Background, ChatSessionStatus.Idle ->
+        ChatSessionStatus.Compacting, ChatSessionStatus.Working, ChatSessionStatus.Background, ChatSessionStatus.Idle ->
             if (MaterialTheme.hapi.isDark) Color(0xFF6CDB86) else Color(0xFF16783D)
         ChatSessionStatus.NeedsApproval, ChatSessionStatus.NeedsAttention ->
             if (MaterialTheme.hapi.isDark) Color(0xFFFFD166) else Color(0xFF995700)

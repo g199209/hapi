@@ -1,0 +1,9 @@
+<resources>
+    <string name="chat_status_restoring">Восстановление сессии</string>
+    <string name="chat_restore_history">Чтение истории</string>
+    <string name="chat_restore_projecting">Обработка истории</string>
+    <string name="chat_restore_children">Восстановление субагентов</string>
+    <string name="chat_restore_syncing">Завершение синхронизации</string>
+    <string name="chat_restore_turns">Прочитано ходов: %1$d</string>
+    <string name="chat_restore_seconds">%1$d с</string>
+</resources>

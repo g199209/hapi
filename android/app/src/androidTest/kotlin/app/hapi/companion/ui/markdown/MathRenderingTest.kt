@@ -81,6 +81,48 @@ ${'$'}${'$'} \theta^*=\arg\max_\theta J(\theta) ${'$'}${'$'}
         }
     }
 
+    @Test fun geometricWaitingTimesInOrderedListRenderAndKeepTheirContainer() {
+        mount("""1. 每天成功概率为 \(k/100\)，等待时间
+   \[
+   X_k\sim\operatorname{Geom}(k/100),\qquad \mathbb E[X_k]=\frac{100}{k}.
+   \]
+2. 每天成功概率为 \(1/100\)，等待时间
+   \[
+   Y_k\sim\operatorname{Geom}(1/100),\qquad \mathbb E[Y_k]=100.
+   \]
+
+After list""", scale = 1.6f)
+        awaitMath(4)
+        val blocks = compose.onAllNodesWithTag("math-block").fetchSemanticsNodes()
+        assertEquals(2, blocks.size)
+        assertTrue(blocks.all { it.boundsInRoot.left > 0 })
+        val first = compose.onAllNodesWithTag("math-block")[0]
+        val range = first.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange]
+        assertTrue(range.maxValue() > 0)
+        first.performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        assertTrue(first.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange].value() > 0)
+        compose.onNodeWithText("After list").assertExists()
+    }
+
+    @Test fun boxedProbabilityFormulasRenderInDarkModeAndScrollAtLargeFontScale() {
+        mount("""\[
+\boxed{N\overset d= Z+\sum_{k=1}^{99}X_k,\qquad Z\sim\operatorname{NegBin}(99,1/100)}
+\]
+
+\[
+\boxed{G_N(z)=\mathbb E[z^N]=\left(\frac{z}{100-99z}\right)^{99}\prod_{k=1}^{99}\frac{kz}{100-(100-k)z}}
+\]
+
+After boxes""", dark = true, scale = 1.6f)
+        awaitMath(2)
+        val second = compose.onAllNodesWithTag("math-block")[1]
+        second.performScrollTo().performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        assertTrue(second.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange].value() > 0)
+        compose.onNodeWithText("After boxes").assertExists()
+    }
+
     @Test fun selectAllKeepsTextAndSelectableLatexInLogicalOrder() {
         val formula = "\$\$\n\\frac{1}{2}\n\$\$"
         mount("Alpha beta\n\n$formula\n\nOmega \\(x_i\\).")

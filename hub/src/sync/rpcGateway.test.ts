@@ -56,6 +56,11 @@ function createGateway() {
 }
 
 describe('RpcGateway RPC timeouts', () => {
+    it('waits for the runner startup budget when restoring a session', async () => {
+        const { gateway, timeouts } = createGateway()
+        await gateway.spawnSession('machine-1', '/workspace', 'codex')
+        expect(timeouts).toEqual([120_000])
+    })
     it('uses the default RPC timeout for regular machine RPCs', async () => {
         const { gateway, timeouts } = createGateway()
 

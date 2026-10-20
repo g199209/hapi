@@ -142,6 +142,9 @@ class HapiApi internal constructor(
     /** Normalized hub origin this instance talks to. */
     val hubUrl: String = baseUrl.toString().removeSuffix("/")
 
+    // Reopen/resume outlive the Hub's 120s spawn RPC. Ordinary calls retain their timeout.
+    private val lifecycleClient = client.newBuilder().readTimeout(125, java.util.concurrent.TimeUnit.SECONDS).build()
+
     // ---------------------------------------------------------------- core --
 
     /**
@@ -326,11 +329,12 @@ class HapiApi internal constructor(
             "POST",
             url("api", "sessions", sessionId, "resume").build(),
             ResumeSessionRequest(permissionMode).toJsonBody(),
+            client = lifecycleClient,
         )
 
     /** `POST /api/sessions/:id/reopen` — same superseding-id caveat as resume; 422 when metadata is incomplete. */
     suspend fun reopenSession(sessionId: String): ReopenSessionResponse =
-        request("POST", url("api", "sessions", sessionId, "reopen").build(), EMPTY_JSON)
+        request("POST", url("api", "sessions", sessionId, "reopen").build(), EMPTY_JSON, client = lifecycleClient)
 
     /** `POST /api/sessions/:id/archive` — 409 for a plain inactive session. */
     suspend fun archiveSession(sessionId: String) {

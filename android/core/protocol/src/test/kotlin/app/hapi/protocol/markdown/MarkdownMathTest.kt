@@ -69,6 +69,22 @@ class MarkdownMathTest {
         assertEquals("x_i^2", quote.latex)
     }
 
+    @Test fun `prisoner waiting-time display equations render inside ordered items without blank lines`() {
+        val source = """1. 等其中一人被选中并开灯。每天成功概率为 \(k/100\)，等待时间
+   \[
+   X_k\sim\operatorname{Geom}(k/100),\qquad \mathbb E[X_k]=\frac{100}{k}.
+   \]
+2. 等计数者被选中并关灯。每天成功概率为 \(1/100\)，等待时间
+   \[
+   Y_k\sim\operatorname{Geom}(1/100),\qquad \mathbb E[Y_k]=100.
+   \]"""
+        val formulas = nodes(source).filterIsInstance<DisplayMath>()
+        assertEquals(2, formulas.size, nodes(source).joinToString { it.toString() })
+        assertTrue(formulas.all { it.closed }, formulas.joinToString { it.source })
+        assertEquals("X_k\\sim\\operatorname{Geom}(k/100),\\qquad \\mathbb E[X_k]=\\frac{100}{k}.", formulas[0].latex)
+        assertEquals("Y_k\\sim\\operatorname{Geom}(1/100),\\qquad \\mathbb E[Y_k]=100.", formulas[1].latex)
+    }
+
     @Test fun `math does not consume URL destinations or display trailing prose`() {
         val parsed = nodes("[docs](https://example.com/\$path\$) and \$\$x^2\$\$ after")
         assertEquals(1, parsed.filterIsInstance<InlineMath>().size)

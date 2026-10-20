@@ -1,0 +1,9 @@
+<resources>
+    <string name="chat_status_restoring">正在恢复会话</string>
+    <string name="chat_restore_history">正在读取历史</string>
+    <string name="chat_restore_projecting">正在处理历史</string>
+    <string name="chat_restore_children">正在恢复子 Agent</string>
+    <string name="chat_restore_syncing">正在完成同步</string>
+    <string name="chat_restore_turns">已读取 %1$d 轮</string>
+    <string name="chat_restore_seconds">%1$d 秒</string>
+</resources>

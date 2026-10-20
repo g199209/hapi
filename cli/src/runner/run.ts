@@ -17,6 +17,7 @@ import { getCliArgs } from '@/utils/cliArgs';
 import { getProcessStartMarker, isProcessAlive, isWindows, killProcess, killProcessByChildProcess, killProcessTreeByPid } from '@/utils/process';
 import { findStopSessionOrphanTargets, reapRunnerSpawnedOrphans } from '@/runner/orphanReap';
 import { decideUntrackedRunnerWebhook } from '@/runner/lateRunnerWebhook';
+import { runnerWebhookTimeoutMs } from '@/runner/webhookTimeout';
 import {
     decideKeepWrapperArchive,
     decideRawPidStop,
@@ -409,11 +410,6 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
     // heavy session restore). Allow advanced users to raise this ceiling
     // so that slow starts no longer leave orphaned child processes which
     // later report back as ghost sessions.
-    const envWebhookTimeout = Number(process.env.HAPI_RUNNER_WEBHOOK_TIMEOUT_MS);
-    const webhookTimeoutMs =
-      Number.isFinite(envWebhookTimeout) && envWebhookTimeout > 0
-        ? envWebhookTimeout
-        : 15_000;
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -523,11 +519,15 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
           // post-restart CLIs must be adopted so StopSession can find them —
           // Claude often has no HAPI id on argv yet (#1910 / #1911).
           const timedOutByThisRunner = webhookTimeoutOrphanPids.has(pid);
-          webhookTimeoutOrphanPids.delete(pid);
           const decision = decideUntrackedRunnerWebhook({
             concurrentClients: Boolean(sessionMetadata.capabilities?.concurrentClients),
             timedOutByThisRunner,
           });
+          if (decision === 'ignore') {
+            logger.debug(`[RUNNER RUN] Ignoring shared webhook during timeout cleanup for PID ${pid}`);
+            return;
+          }
+          webhookTimeoutOrphanPids.delete(pid);
           if (decision === 'kill') {
             logger.debug(
               `[RUNNER RUN] Ignoring late webhook from orphaned runner-spawned PID ${pid} (session ${sessionId}). Terminating child.`
@@ -1026,7 +1026,7 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
                 errorMessage: buildWebhookFailureMessage('timeout')
               });
             })();
-          }, webhookTimeoutMs);
+          }, runnerWebhookTimeoutMs(options.agent, process.env.HAPI_RUNNER_WEBHOOK_TIMEOUT_MS));
 
           // Register awaiter
           pidToAwaiter.set(pid, (completedSession) => {

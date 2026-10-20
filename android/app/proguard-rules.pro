@@ -6,3 +6,10 @@
 -keepclassmembers class app.hapi.companion.ui.markdown.MermaidBridge {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# MacroInfo resolves NewCommandMacro and executeMacro from runtime strings.
+# Built-in macros such as operatorname use this dispatcher too.
+-keep class org.scilab.forge.jlatexmath.NewCommandMacro {
+    public <init>();
+    public java.lang.String executeMacro(org.scilab.forge.jlatexmath.TeXParser, java.lang.String[]);
+}

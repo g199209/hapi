@@ -98,9 +98,15 @@ private fun QueuedRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (row.indeterminate) {
+                if (row.waitingForCompaction) {
                     Text(
-                        text = "Delivery outcome unknown",
+                        text = stringResource(R.string.chat_compaction_waiting),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (row.indeterminate) {
+                    Text(
+                        text = stringResource(R.string.chat_delivery_unknown),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -116,9 +122,9 @@ private fun QueuedRow(
                     )
                 }
             }
-            if (row.indeterminate) {
-                TextButton(onClick = { onRetry(row.id) }, enabled = row.canAct) { Text("Retry") }
-            } else if (row.canSteer) {
+            if (row.indeterminate && !row.waitingForCompaction) {
+                TextButton(onClick = { onRetry(row.id) }, enabled = row.canAct) { Text(stringResource(R.string.chat_delivery_retry)) }
+            } else if (row.canSteer && !row.waitingForCompaction) {
                 TextButton(onClick = { onSteer(row.id) }) { Text(stringResource(R.string.chat_queued_steer)) }
             }
             TextButton(onClick = { onEdit(row.id) }, enabled = row.canAct) { Text(stringResource(R.string.chat_queued_edit)) }

@@ -204,7 +204,7 @@ controls for DSH.
 
 - `HAPI_RUNNER_HEARTBEAT_INTERVAL` - Heartbeat interval in ms (default: 60000).
 - `HAPI_RUNNER_HTTP_TIMEOUT` - HTTP timeout for runner control in ms (default: 10000).
-- `HAPI_RUNNER_WEBHOOK_TIMEOUT_MS` - Session-start webhook timeout in ms (default: 15000); raise for slow agent startup/resume.
+- `HAPI_RUNNER_WEBHOOK_TIMEOUT_MS` - Session-start webhook timeout in ms (default: 90000 for Codex, 15000 for other agents); raise for slow agent startup/resume. The Hub spawn RPC waits up to 120000 ms. Shared Codex reports restoration phases and real history counts through versioned agentState, and reads up to 100 turns per history page.
 - `HAPI_DISABLE_VERSION_HANDOFF` - Set to `1` to disable automatic runner replacement on CLI binary changes.
 - `HAPI_RUNNER_SUPERVISED` - Set to `1` only when a supervisor restarts the runner after exit; enables the web Restart control's supervised path.
 
@@ -242,6 +242,11 @@ When changing agent bootstrap, handoff, or shared-session plumbing:
 - Gemini remains a historical wire flavor, not a launchable integration. Use the [supported-agent guide](../docs/guide/agents.md) for the launchable set.
 
 ## Storage
+
+Shared Codex publishes root-only `agentState.codexCompaction` from native item
+start/completion events. Reconnect uses a revision-guarded active-turn snapshot;
+completed history and child compactions never mark the root as compacting. The
+state withdraws steering availability without changing queue delivery/retry semantics.
 
 Data is stored in `~/.hapi/` (or `$HAPI_HOME`):
 

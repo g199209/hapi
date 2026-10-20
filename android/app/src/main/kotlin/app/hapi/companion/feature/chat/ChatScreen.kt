@@ -111,6 +111,7 @@ internal fun ChatScreen(
     readingState: TranscriptReadingState = rememberTranscriptReadingState(viewModel.sessionId),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val restoration by viewModel.restoration.collectAsState()
     val historyState by viewModel.history.state.collectAsState()
     val reconnecting by viewModel.reconnecting.collectAsState()
     val historyPaging by viewModel.historyPaging.collectAsState()
@@ -288,7 +289,7 @@ internal fun ChatScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.chat_back))
                     }
                 },
-                title = { ChatTitle(state.header, reconnecting, viewModel::retry, loadFailed = state.loadFailed) },
+                title = { ChatTitle(state.header.copy(restoring = restoration != null), reconnecting, viewModel::retry, loadFailed = state.loadFailed) },
                 actions = {
                     // Two icons max (device feedback: four icons squeezed the
                     // title out) — gear for the frequent config switches,
@@ -328,7 +329,8 @@ internal fun ChatScreen(
                         .navigationBarsPadding()
                         .imePadding(),
                 ) {
-                    if (!state.header.active && !state.isInitialLoading && !state.loadFailed) {
+                    restoration?.let { SessionRestoreBanner(it) }
+                    if (restoration == null && !state.header.active && !state.isInitialLoading && !state.loadFailed) {
                         InactiveSessionBar(onReopen = viewModel::reopenSession)
                     }
                     QueuedMessagesBar(
@@ -650,6 +652,8 @@ private fun EmptyChat() {
  * behavior — so hub-side wording is never mistranslated.
  */
 internal fun chatNoticeText(context: Context, notice: ChatNotice): String = when (notice) {
+    ChatNotice.CompactionWaiting -> context.getString(R.string.chat_compaction_waiting)
+    ChatNotice.DeliveryResolving -> context.getString(R.string.chat_delivery_resolving)
     ChatNotice.DraftParked -> context.getString(R.string.chat_notice_draft_parked)
     ChatNotice.ScratchlistFull -> context.getString(R.string.chat_notice_scratchlist_full)
     ChatNotice.ScratchlistParkFailed -> context.getString(R.string.chat_notice_park_failed)
