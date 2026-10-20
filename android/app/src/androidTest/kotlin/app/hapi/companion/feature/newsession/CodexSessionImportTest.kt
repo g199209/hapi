@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
@@ -128,7 +129,7 @@ class CodexSessionImportTest {
         compose.runOnIdle { assertEquals(0, dismissed) }
     }
 
-    @Test fun headerDragCancelAndBackStillDismissOutsideTheList() {
+    @Test fun onlyHandleDragsDismissWhileTitleAndScrimStayPut() {
         var state by mutableStateOf(sampleState(40))
         var dismissed = 0
         compose.setContent {
@@ -137,7 +138,16 @@ class CodexSessionImportTest {
             }
         }
         val distance = compose.onNodeWithTag("codex-import-list").fetchSemanticsNode().boundsInRoot.height
+        val panel = compose.onNodeWithTag("codex-import-panel")
+        val panelTop = panel.fetchSemanticsNode().boundsInRoot.top
         compose.onNodeWithText("GMF-PC").performTouchInput {
+            swipe(center, center + Offset(0f, distance), durationMillis = 180)
+        }
+        compose.onNodeWithTag("codex-import-drag-handle").performTouchInput { click(center) }
+        compose.onNodeWithTag("codex-import-scrim").performTouchInput { click(Offset(width / 2f, panelTop - 8f)) }
+        assertEquals(panelTop, panel.fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.runOnIdle { assertEquals(0, dismissed) }
+        compose.onNodeWithTag("codex-import-drag-handle").performTouchInput {
             swipe(center, center + Offset(0f, distance), durationMillis = 180)
         }
         compose.waitUntil(5_000) { !state.open }
@@ -148,6 +158,105 @@ class CodexSessionImportTest {
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5_000) { !state.open }
         compose.runOnIdle { assertEquals(3, dismissed) }
+    }
+
+    @Test fun directoryRoundTripsAndInterruptedFlingsLeaveTheListScrollable() {
+        var state by mutableStateOf(sampleState(160).copy(
+            directory = "/home/a",
+            sessions = sampleState(160).sessions.mapIndexed { index, item -> item.copy(cwd = if (index < 70) "/home/a" else "/home/b") },
+        ))
+        var dismissed = 0
+        compose.setContent {
+            HapiTheme {
+                if (state.open) CodexSessionImportSheet(state, { dismissed++; state = state.copy(open = false) }, {},
+                    { state = state.copy(query = it) }, { state = state.copy(directory = it) }, {}, {})
+            }
+        }
+        val panel = compose.onNodeWithTag("codex-import-panel")
+        val top = panel.fetchSemanticsNode().boundsInRoot.top
+        fun choose(tag: String) {
+            compose.onNodeWithTag("codex-import-directory").performClick()
+            compose.onNodeWithTag(tag).performClick()
+        }
+        repeat(3) {
+            compose.onNodeWithTag("codex-import-list").performTouchInput { swipeUp(durationMillis = 120) }
+            choose("codex-import-path-/home/b")
+            choose("codex-import-all-directories")
+            val list = compose.onNodeWithTag("codex-import-list")
+            assertEquals(0f, list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value(), 1f)
+            repeat(12) {
+                // A single injection block avoids waiting for each fling to settle.
+                list.performTouchInput {
+                    swipeUp(durationMillis = 100)
+                    advanceEventTime(16)
+                    swipeDown(durationMillis = 120)
+                    advanceEventTime(16)
+                    swipeDown(durationMillis = 100)
+                }
+                compose.waitForIdle()
+                assertEquals(top, panel.fetchSemanticsNode().boundsInRoot.top, 1f)
+                assertEquals("Round trip must reach the first item", 0f,
+                    list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value(), 1f)
+                list.performTouchInput { swipeUp(durationMillis = 250) }
+                compose.waitForIdle()
+                assertTrue("List must still scroll after returning to its top",
+                    list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0)
+            }
+        }
+        compose.onNodeWithTag("codex-import-search").performTextInput("Project 1")
+        assertEquals(0f, compose.onNodeWithTag("codex-import-list").fetchSemanticsNode()
+            .config[SemanticsProperties.VerticalScrollAxisRange].value(), 1f)
+        compose.runOnIdle { assertEquals(0, dismissed) }
+    }
+
+    @Test fun pendingImportBlocksHandleAndBackDismissal() {
+        var state by mutableStateOf(sampleState(40))
+        var dismissed = 0
+        compose.setContent {
+            HapiTheme {
+                if (state.open) CodexSessionImportSheet(state, { dismissed++; state = state.copy(open = false) }, {}, {}, {}, {}, {})
+            }
+        }
+        compose.runOnIdle { state = state.copy(importing = true) }
+        val distance = compose.onNodeWithTag("codex-import-list").fetchSemanticsNode().boundsInRoot.height
+        compose.onNodeWithTag("codex-import-drag-handle").assertIsNotEnabled().performTouchInput {
+            swipe(center, center + Offset(0f, distance), durationMillis = 150)
+        }
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithTag("codex-import-list").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, dismissed) }
+    }
+
+    @Test fun draggingBodyGapAfterDirectoryChangesCannotMoveOrDismissPanel() {
+        var state by mutableStateOf(sampleState(60).copy(
+            directory = "/home/a",
+            sessions = sampleState(60).sessions.mapIndexed { index, item -> item.copy(cwd = if (index < 20) "/home/a" else "/home/b") },
+        ))
+        var dismissed = 0
+        compose.setContent {
+            HapiTheme {
+                if (state.open) CodexSessionImportSheet(state, { dismissed++; state = state.copy(open = false) }, {}, {},
+                    { state = state.copy(directory = it) }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("codex-import-directory").performClick()
+        compose.onNodeWithTag("codex-import-path-/home/b").performClick()
+        compose.onNodeWithTag("codex-import-directory").performClick()
+        compose.onNodeWithText("All directories").performClick()
+        val directory = compose.onNodeWithTag("codex-import-directory")
+        val list = compose.onNodeWithTag("codex-import-list")
+        val fieldBounds = directory.fetchSemanticsNode().boundsInRoot
+        val listBounds = list.fetchSemanticsNode().boundsInRoot
+        val gap = listBounds.top - fieldBounds.bottom
+        assertTrue("Test must start in the spacing outside LazyColumn", gap > 0f)
+        val headerTop = compose.onNodeWithText("GMF-PC").fetchSemanticsNode().boundsInRoot.top
+        directory.performTouchInput {
+            val start = Offset(center.x, height + gap / 2f)
+            swipe(start, start + Offset(0f, listBounds.height * 0.8f), durationMillis = 150)
+        }
+        list.assertIsDisplayed()
+        assertEquals(headerTop, compose.onNodeWithText("GMF-PC").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.runOnIdle { assertEquals(0, dismissed) }
     }
 
     private fun sampleState(count: Int) = CodexSessionImportState(
