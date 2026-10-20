@@ -39,11 +39,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Velocity
 import app.hapi.companion.R
 import java.text.DateFormat
 import java.util.Date
@@ -71,6 +76,18 @@ internal fun CodexSessionImportSheet(
         skipPartiallyExpanded = true,
         confirmValueChange = { !importing },
     )
+    // At the top, a list's remaining downward drag/fling belongs to the list.
+    // Consume it before the sheet's nested scroll can move/dismiss the panel.
+    // Header/handle drags still reach the sheet normally.
+    val listScrollBoundary = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource) =
+                Offset(0f, available.y.coerceAtLeast(0f))
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity) =
+                Velocity(0f, available.y.coerceAtLeast(0f))
+        }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(horizontal = 16.dp),
@@ -116,7 +133,7 @@ internal fun CodexSessionImportSheet(
             }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             val sessions = state.filteredSessions
-            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("codex-import-list").nestedScroll(listScrollBoundary)) {
                 if (state.loading) {
                     item { CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp)) }
                 } else if (sessions.isEmpty()) {

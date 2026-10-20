@@ -430,6 +430,9 @@ session** below the machine picker. The history sheet supports search, directory
 filtering and refresh. Select a thread and tap **Import and open** to continue it.
 The list comes from that runner, including remote machines.
 
+List-edge downward drags/flings stay within the list instead of moving the
+sheet. Drag the header/handle, tap Cancel, or use Back to dismiss it.
+
 Import uses the same Hub endpoints as the WebUI: `/api/codex/sessions`,
 `/api/codex/sync-session`, then `/api/sessions/:id/resume`. It keeps the native
 thread ID and existing model, reasoning effort and permissions; the create
