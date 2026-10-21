@@ -19,7 +19,8 @@ stable tool IDs and normal self-sizing/anchor compensation remain unchanged.
   If a tail sync invalidates a pending page, its completion rechecks demand
   without waiting for a layout acknowledgement that will never arrive.
 - Preserve the current visible message ID and its offset, including movement
-  while HTTP is in flight. Prepending never calls `scrollToItem`.
+  while HTTP is in flight. iOS compensates within layout; Android applies
+  index-changing snapshots after the current drag/fling has finished.
 - Browsing history disables tail following. A fixed-height history control
   avoids loading-spinner insertion/removal shifts. “Back to latest” remains
   available even when the live tail has been trimmed out of memory.
@@ -114,14 +115,23 @@ history requests from the inspector.
 ### Android
 
 `ChatTranscript` uses a chronological `LazyColumn`, not `reverseLayout`.
-Stable keys preserve its first visible item and partial-row offset. A measured
-height cache estimates the top preload distance; unmeasured rows use an
+`AnchoredTranscript` supplements stable keys with a full-snapshot
+ID-to-index lookup: Foundation 1.8.1 only looks up nearby keys, so a large prepend
+can otherwise retain an obsolete index. The history control is excluded from
+reading anchors. Index-changing snapshots wait for an active drag/fling to end,
+coalescing incoming updates while pending; then the latest actual message and
+pixel offset are captured in `SideEffect`, after the new item provider is
+installed and before measurement, and `requestScrollToItem` is scheduled. It never cancels an active scroll.
+Content-only updates and tail following continue normally. Pending snapshots
+are not acknowledged until their corrected layout; demand is reported first.
+A measured height cache estimates the top preload distance; unmeasured rows use an
 estimate. Layout acknowledgement checks visible keys against their new
 indices, including equal-size bounded-window replacements.
 Tail-follow intent and the consumed jump token use saved state alongside the
 list position, so navigation return/activity recreation does not replay an
 old jump-to-latest command or report a false tail viewport to the ViewModel.
-No `layoutInfo` reads occur in transcript composition. Tail geometry is
+Only the scroll start/end Boolean is read in composition; no per-frame
+`layoutInfo` reads occur there. Tail geometry is
 observed through `snapshotFlow` only while following; corrections are queued
 outside measurement/placement to avoid reentrant layout. Row heights use
 size-change callbacks, not callbacks on every global-position change, and

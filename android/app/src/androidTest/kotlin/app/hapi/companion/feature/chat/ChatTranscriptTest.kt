@@ -64,7 +64,8 @@ class ChatTranscriptTest {
             override fun isTraceInProgress() = true
             override fun traceEventEnd() = Unit
             override fun traceEventStart(key: Int, dirty1: Int, dirty2: Int, info: String) {
-                if (info.startsWith("app.hapi.companion.feature.chat.ChatTranscript (")) compositions.incrementAndGet()
+                if (info.startsWith("app.hapi.companion.feature.chat.ChatTranscript (") ||
+                    info.startsWith("app.hapi.companion.feature.chat.TranscriptContent (")) compositions.incrementAndGet()
             }
         })
         try {
@@ -137,7 +138,11 @@ class ChatTranscriptTest {
     }
 
     private fun anchor(): Pair<Any, Int> = compose.runOnIdle {
-        list.layoutInfo.visibleItemsInfo.first { it.key != "chat-history-control" }.let { it.key to it.offset }
+        // layoutInfo can include the preceding row in content padding even
+        // though firstVisibleItemIndex has already advanced to the next row.
+        list.layoutInfo.visibleItemsInfo.first {
+            it.index >= list.firstVisibleItemIndex && it.key != "chat-history-control"
+        }.let { it.key to it.offset }
     }
 
     @Test fun planUpdatesAndRecyclingPreserveTheReadingAnchor() {

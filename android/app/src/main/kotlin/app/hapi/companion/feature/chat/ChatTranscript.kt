@@ -52,7 +52,7 @@ private data class TranscriptItem(val block: VisibleChatBlock) {
 }
 
 /** Positive-order keys preserve the TOP reading anchor, including tall rows
- * whose bottom is still streaming. No prepend invokes scrollToItem. */
+ * whose bottom is still streaming. Prepend placement uses a full-list key lookup. */
 @Composable
 internal fun ChatTranscript(
     state: ChatUiState,
@@ -66,6 +66,26 @@ internal fun ChatTranscript(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     readingState: TranscriptReadingState = rememberTranscriptReadingState(state.sessionId),
+) {
+    AnchoredTranscript(state, listState, readingState) { presented ->
+        TranscriptContent(presented, paging, jumpToken, jumpingLatest, onViewport, onLayout,
+            onRetryHistory, onJumpToLatest, modifier, listState, readingState)
+    }
+}
+
+@Composable
+private fun TranscriptContent(
+    state: ChatUiState,
+    paging: ChatHistoryPagingState,
+    jumpToken: Long,
+    jumpingLatest: Boolean,
+    onViewport: (Boolean, Boolean) -> Unit,
+    onLayout: (Long, Boolean) -> Unit,
+    onRetryHistory: () -> Unit,
+    onJumpToLatest: () -> Unit,
+    modifier: Modifier,
+    listState: LazyListState,
+    readingState: TranscriptReadingState,
 ) {
     val rowState = rememberSaveableStateHolder()
     val stateKeys = remember(state.sessionId) { mutableSetOf<String>() }
