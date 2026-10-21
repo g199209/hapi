@@ -151,6 +151,16 @@ Each root has its own HAPI socket, MCP bridge and shell `HAPI_SESSION_ID`.
 Child-agent traces/permissions are attributed by native ancestry, not merely by
 being received on the same app-server connection.
 
+Root compaction uses live `agentState.codexCompaction` for the Web status bar and
+Android header/queued-input hint. Matching completion clears it. An observed-start
+checkpoint survives detach and is reconciled against a revision-guarded native
+snapshot on reconnect: native history only includes the compaction item after it
+completes, so an empty active turn retains the checkpoint and a matching history
+item retires it. Root start notifications do not
+append a second, start-only transcript notice. Child compaction remains a scoped
+trace, and history replay never re-announces a live start. The legacy launcher
+retains its separate start/completion notices.
+
 ## Recovery and local data
 
 - Hub outage: existing native threads continue. Reconnect reconciles history,

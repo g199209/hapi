@@ -50,7 +50,7 @@ const PERMISSION_TONE_CLASSES: Record<PermissionModeTone, string> = {
 const CONTEXT_WARNING_THRESHOLD_PERCENT = 70
 const CONTEXT_DANGER_THRESHOLD_PERCENT = 90
 
-function getConnectionStatus(
+export function getConnectionStatus(
     active: boolean,
     thinking: boolean,
     agentState: AgentState | null | undefined,
@@ -84,6 +84,15 @@ function getConnectionStatus(
             text: t('misc.permissionRequired'),
             color: 'text-[#FF9500]',
             dotColor: 'bg-[#FF9500]',
+            isPulsing: true
+        }
+    }
+
+    if (agentState?.codexCompaction) {
+        return {
+            text: t('misc.compacting'),
+            color: 'text-[#007AFF]',
+            dotColor: 'bg-[#007AFF]',
             isPulsing: true
         }
     }

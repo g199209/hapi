@@ -108,7 +108,7 @@ export class SharedCodexProjection {
         await this.project(method, params, modelAtReceipt);
     }
 
-    private async project(method: string, params: unknown, modelAtReceipt?: string): Promise<void> {
+    private async project(method: string, params: unknown, modelAtReceipt?: string, fromHistory = false): Promise<void> {
         if (method.startsWith('codex/event/')) return;
         const p = record(params);
         const item = record(p.item);
@@ -207,6 +207,16 @@ export class SharedCodexProjection {
                 this.send({ type: 'tool-call', name: event.name, callId, input: event.input ?? event.arguments }, key);
             } else if (event.type === 'codex_tool_call_end' && callId) {
                 this.send({ type: 'tool-call-result', callId, output: event.output, is_error: event.is_error }, key);
+            } else if (event.type === 'compaction_started') {
+                // History replay re-projects every completed item's start;
+                // a finished compaction must not announce a live status.
+                if (fromHistory) continue;
+                if (this.parentThreadId) {
+                    this.send({ type: 'compaction_started', statusText: '📦 Compaction started' }, key);
+                }
+                // Root compaction is live agentState.codexCompaction, owned by
+                // SharedCodexCompaction. A persisted start-only event would add
+                // a second notice and cannot represent completion or reconnect.
             } else if (event.type === 'token_count' || event.type === 'context_compacted' || event.type.startsWith('thread_goal_')) {
                 const model = event.type === 'token_count' && turnId ? this.turnModels.get(turnId) : undefined;
                 this.send({ ...event, ...(model ? { model } : {}), flavor: 'codex', scope: { role: 'parent', threadId: this.threadId }, scope_role: 'parent', thread_id: this.threadId }, key);
@@ -283,7 +293,7 @@ export class SharedCodexProjection {
                 if (!this.parentThreadId && string(record(item).id) && pendingTitle && !this.completedTitles.has(titleKey)) {
                     this.pendingTitles.set(titleKey, pendingTitle);
                 }
-                await this.project('item/started', params);
+                await this.project('item/started', params, undefined, true);
                 // Active snapshots can contain partial assistant text. Do not
                 // settle it under the final stable id and suppress completion.
                 if (turn.status !== 'inProgress' || record(item).status === 'completed' || record(item).type === 'userMessage'
@@ -296,7 +306,7 @@ export class SharedCodexProjection {
                         }
                         this.pendingTitles.delete(titleKey);
                     }
-                    await this.project('item/completed', params);
+                    await this.project('item/completed', params, undefined, true);
                 }
             }
             completed += turn.items.length;

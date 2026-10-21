@@ -49,6 +49,18 @@ describe('StatusBar context details popover', () => {
         expect(thinkingLabel.parentElement?.className.split(' ')).toContain('sm:top-0.5')
     })
 
+    it('renders compaction once in the existing status and removes it on completion', () => {
+        const { rerender } = render(
+            <I18nProvider>
+                <StatusBar active thinking agentState={{ codexCompaction: { turnId: 'turn', itemId: 'compact' } }} />
+            </I18nProvider>
+        )
+        expect(screen.getAllByText('Compacting context…')).toHaveLength(1)
+        rerender(<I18nProvider><StatusBar active thinking={false} agentState={{ codexCompaction: null }} /></I18nProvider>)
+        expect(screen.queryByText('Compacting context…')).not.toBeInTheDocument()
+        expect(screen.getByText('online')).toBeInTheDocument()
+    })
+
     it('uses an effort-only reasoning label on mobile and the full label on desktop', () => {
         render(
             <I18nProvider>

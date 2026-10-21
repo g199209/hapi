@@ -152,6 +152,13 @@ export const MetadataSchema = z.object({
     // Upgrade checkpoint: optional summaries absent from older bridges must
     // not be appended as new messages when their native history is replayed.
     codexReasoningReplayExcluded: z.array(z.string()).optional(),
+    // Native history only includes a contextCompaction item after completion.
+    // Keep the observed start across bridge reconnects; reconcile with history.
+    codexCompactionCheckpoint: z.object({
+        threadId: z.string().min(1),
+        turnId: z.string().min(1),
+        itemId: z.string().min(1),
+    }).optional(),
     // Pi localId → append-only session entry id mapping. Pi entry ids are the
     // only stable native boundary accepted by its fork API.
     conversationHistoryEntryIds: z.record(z.string(), z.string().min(1)).optional(),

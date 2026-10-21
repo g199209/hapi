@@ -66,6 +66,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
     const rpc = new Map<string, (raw: unknown) => Promise<unknown>>();
     const send = vi.fn();
     const userMessages = vi.fn();
+    const sessionEvents = vi.fn();
     const hubArchivedListeners: Array<() => void> = [];
     const session = {
         sessionId: 'sid', getMetadata: () => metadata,
@@ -78,7 +79,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
             if (event === 'hub-archived') hubArchivedListeners.push(listener);
         },
         rpcHandlerManager: { registerHandler: (name: string, handler: (raw: unknown) => Promise<unknown>) => rpc.set(name, handler) },
-        sendSessionEvent() {}, sendAgentMessage: send, emitSessionReady() {},
+        sendSessionEvent: sessionEvents, sendAgentMessage: send, emitSessionReady() {},
         sendUserMessage: userMessages, emitMessagesConsumed() {}, emitSteerIndeterminate() {}, syncNativeQueuedMessage() {},
         sendSessionDeath() {}, async flush() {}, close() {}
     } as unknown as ApiSessionClient;
@@ -101,7 +102,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
         abandoned(): void;
     };
     return {
-        root, native, rpc, send, userMessages, metadata: () => metadata, state: () => state, updateState,
+        root, native, rpc, send, userMessages, sessionEvents, metadata: () => metadata, state: () => state, updateState,
         reconnect: () => reconnect?.(),
         emitHubArchived: () => { for (const listener of hubArchivedListeners) listener(); },
         hubArchivedListenerCount: () => hubArchivedListeners.length,
@@ -449,6 +450,8 @@ it('tracks compaction only for the root and withdraws steering until completion'
     f.native.notify('item/completed', { threadId: 'thread', turnId: 'turn', item: { type: 'contextCompaction', id: 'root-compact' } });
     expect(f.state().codexCompaction).toBeNull();
     expect(f.state().steeringActive).toBe(true);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(f.sessionEvents.mock.calls.some(([event]) => event.type === 'message' && event.message.includes('Compaction started'))).toBe(false);
 });
 
 

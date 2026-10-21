@@ -3,6 +3,7 @@ import {
     formatCompactContextUsageLabel,
     formatContextUsageLabel,
     getContextWarning,
+    getConnectionStatus,
     getContextUsageDetails,
     shouldShowCodexFastBadge
 } from './StatusBar'
@@ -59,5 +60,25 @@ describe('shouldShowCodexFastBadge', () => {
         expect(shouldShowCodexFastBadge('codex', 'fast')).toBe(true)
         expect(shouldShowCodexFastBadge('codex', 'priority')).toBe(true)
         expect(shouldShowCodexFastBadge('claude', 'fast')).toBe(false)
+    })
+})
+
+
+describe('Codex compaction connection status', () => {
+    const compacting = { codexCompaction: { turnId: 'turn', itemId: 'compact' } }
+    const t = (key: string) => key
+    it('shows live compaction in the existing status before generic thinking', () => {
+        expect(getConnectionStatus(true, true, compacting, undefined, 0, t))
+            .toMatchObject({ text: 'misc.compacting', isPulsing: true })
+        expect(getConnectionStatus(true, false, compacting, undefined, 2, t).text).toBe('misc.compacting')
+    })
+    it('keeps offline and pending permission status ahead of compaction', () => {
+        expect(getConnectionStatus(false, true, compacting, undefined, 0, t).text).toBe('misc.offline')
+        expect(getConnectionStatus(true, true, { ...compacting, requests: {
+            ask: { tool: 'request_user_input', arguments: {}, createdAt: 0 }
+        } }, undefined, 0, t).text).toBe('misc.permissionRequired')
+    })
+    it('withdraws compaction when the native state clears', () => {
+        expect(getConnectionStatus(true, false, { codexCompaction: null }, undefined, 0, t).text).toBe('misc.online')
     })
 })

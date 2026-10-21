@@ -163,7 +163,7 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
             if (engine.exitCode === null) { engine.kill('SIGTERM'); await new Promise<void>(resolve => engine.once('exit', () => resolve())); }
             await running;
             http.closeAllConnections();
-            await new Promise<void>(resolve => http.close(() => resolve())); await rm(home, { recursive: true, force: true });
+            await new Promise<void>(resolve => http.close(() => resolve())); await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
         }
     }, 60_000);
     it('attaches to a desktop engine, preserves settings and queued input across detach, and arbitrates questions', async () => {
@@ -295,7 +295,7 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
             await owner.disconnect();
             if (engine.exitCode === null) { engine.kill('SIGTERM'); await new Promise<void>(resolve => engine.once('exit', () => resolve())); }
             await new Promise<void>(resolve => http.close(() => resolve()));
-            await rm(home, { recursive: true, force: true });
+            await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
         }
     }, 60_000);
     it('rejects a child ID before creating a HAPI binding or calling native resume', async () => {
@@ -319,7 +319,7 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
                 .rejects.toThrow('Cannot cold-resume a child agent independently');
             expect(ready).not.toHaveBeenCalled(); expect(state.sessions.size).toBe(0);
             expect(requests.mock.calls.some(([method]) => method === 'thread/resume')).toBe(false);
-        } finally { requests.mockRestore(); await rm(home, { recursive: true, force: true }); }
+        } finally { requests.mockRestore(); await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }); }
     }, 30_000);
     it.each(['abort', 'failure'])('cleans up the native engine and partial roots on startup %s', async outcome => {
         const home = await mkdtemp('/tmp/hapi-shared-startup-'); state.home = home;
@@ -345,7 +345,7 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
             for (const session of state.sessions.values()) {
                 expect(session.dead).toBe(true); expect(session.metadata.lifecycleState).not.toBe('archived');
             }
-        } finally { release(); abort.abort(); await running.catch(() => {}); await rm(home, { recursive: true, force: true }); }
+        } finally { release(); abort.abort(); await running.catch(() => {}); await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }); }
     }, 30_000);
     it('binds empty roots, exchanges messages, isolates /new, and archives only the selected root', async () => {
         const home = await mkdtemp('/tmp/hapi-shared-test-'); state.home = home;
