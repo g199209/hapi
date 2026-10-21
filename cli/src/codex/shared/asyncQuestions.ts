@@ -22,8 +22,8 @@ export function asyncQuestionsInput(item: Record<string, unknown>) {
     })) };
 }
 
-/** Async questions are ordinary agent messages, NOT suspended server RPCs.
- * Reuse HAPI's question controls, but submit through the native user queue. */
+/** Async questions are agent messages, not suspended server RPCs.
+ * Reuse HAPI's question controls and submit native question-reply input immediately. */
 export class SharedCodexAsyncQuestions {
     private settled: z.infer<typeof Settled> = {};
     private attempts: Record<string, AnswerMap> = {};
@@ -141,13 +141,18 @@ export class SharedCodexAsyncQuestions {
         }
         const attempted = this.attempts[reply.id];
         if (attempted && JSON.stringify(attempted) !== JSON.stringify(answers)) {
-            throw new Error('A previous answer may already be queued; retry that same answer to confirm delivery');
+            throw new Error('A previous answer may already have been submitted; retry that same answer to confirm delivery');
         }
         q.sending = true;
         try {
             this.attempts[reply.id] = answers;
             await this.save();
-            const text = q.input!.questions.map(question => `${question.question}\n${answers[question.id].answers.map(a => a.replace(/^user_note:\s*/, '')).join('\n')}`).join('\n\n');
+            const replies = q.input!.questions.map(question => ({
+                questionItemId: q.itemId,
+                question: question.question,
+                answer: answers[question.id].answers.map(a => a.replace(/^user_note:\s*/, '')).join('\n'),
+            }));
+            const text = `<send_user_message_question_reply>\n${JSON.stringify(replies)}\n</send_user_message_question_reply>\n`;
             await this.submit(this.answerId(q.itemId), text);
             await this.finish(q, 'approved', answers);
         } catch (error) { q.sending = false; throw error; }

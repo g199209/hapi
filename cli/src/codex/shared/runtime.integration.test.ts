@@ -56,26 +56,42 @@ vi.mock('../utils/buildHapiMcpBridge', () => ({ buildHapiMcpBridge: async () => 
 // Explicit opt-in: installed official binary, entirely isolated CODEX_HOME, mock Responses API only.
 describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Codex shared runtime', () => {
     afterEach(() => { vi.unstubAllEnvs(); state.sessions.clear(); state.beforeBootstrap = undefined; });
-    it('renders native async questions and queues selectable replies without a server-request callback', async () => {
+    it('injects async answers into the active turn ahead of ordinary queued prompts', async () => {
         const home = await mkdtemp('/tmp/hapi-native-async-'); state.home = home;
         const ch = join(home, 'codex'), cwd = join(home, 'work'); await mkdir(ch); await mkdir(cwd);
         const endpoint = `unix://${join(home, 'engine.sock')}`;
-        const requests: unknown[] = [];
+        const requests: Array<Record<string, unknown>> = [];
+        const held = new Map<number, { response: import('node:http').ServerResponse; id: string }>();
+        const finish = (response: import('node:http').ServerResponse, id: string, item: unknown, created = false) => {
+            const events = [...(created ? [] : [{ type: 'response.created', response: { id } }]),
+                { type: 'response.output_item.done', item },
+                { type: 'response.completed', response: { id, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } } }];
+            if (!created) response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+            response.end(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''));
+        };
+        const release = (index: number) => {
+            const pending = held.get(index)!; held.delete(index);
+            finish(pending.response, pending.id, { type: 'message', role: 'assistant', id: `msg_${pending.id}`,
+                content: [{ type: 'output_text', text: index === 2 ? 'STILL_WORKING' : 'ASYNC_REPLY_OK' }] }, true);
+        };
         const http = createServer((request, response) => {
             const chunks: Buffer[] = [];
             request.on('data', data => chunks.push(Buffer.from(data)));
             request.on('end', () => {
                 requests.push(JSON.parse(Buffer.concat(chunks).toString()));
-                const id = randomUUID();
-                const item = requests.length === 1
-                    ? { type: 'function_call', name: 'request_user_input_async', call_id: 'async-choice', arguments: JSON.stringify({
-                        questions: [{ title: 'Choose the layout', options: ['Compact', 'Expanded'] }]
+                const index = requests.length, id = randomUUID();
+                if (index === 2 || index === 3) {
+                    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+                    response.write(`event: response.created\ndata: ${JSON.stringify({ type: 'response.created', response: { id } })}\n\n`);
+                    held.set(index, { response, id });
+                    return;
+                }
+                const item = index === 1 || index === 5
+                    ? { type: 'function_call', name: 'request_user_input_async', call_id: index === 1 ? 'async-choice' : 'idle-choice', arguments: JSON.stringify({
+                        questions: [{ title: '选择布局', options: ['紧凑', '展开'] }]
                     }) }
-                    : { type: 'message', role: 'assistant', id: `msg_${id}`, content: [{ type: 'output_text', text: 'ASYNC_REPLY_OK' }] };
-                const events = [{ type: 'response.created', response: { id } }, { type: 'response.output_item.done', item },
-                    { type: 'response.completed', response: { id, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } } }];
-                response.writeHead(200, { 'Content-Type': 'text/event-stream' });
-                response.end(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''));
+                    : { type: 'message', role: 'assistant', id: `msg_${id}`, content: [{ type: 'output_text', text: 'ORDINARY_REPLY_OK' }] };
+                finish(response, id, item);
             });
         });
         await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
@@ -85,11 +101,13 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
         const { resolveSharedCodex } = await import('./launch'); const command = resolveSharedCodex();
         const engine = spawn(command.command, [...command.args, '-c', 'features.code_mode_host=true', '-c', 'features.send_message_to_user_async=true', '-c', 'features.default_mode_request_user_input=true', 'app-server', '--listen', endpoint], { cwd, env: process.env, stdio: 'ignore' });
         const owner = new CodexAppServerClient({ endpoint });
+        const events: Array<{ method: string; params: unknown }> = [];
+        owner.setNotificationHandler((method, params) => events.push({ method, params }));
         const abort = new AbortController(); let running: Promise<void> | undefined;
         try {
             await vi.waitFor(async () => { await initializeSharedClient(owner); }, { timeout: 10_000 });
             const thread = record(record(await owner.request('thread/start', { cwd, model: 'gpt-6-astra', sandbox: 'read-only', approvalPolicy: 'never' })).thread);
-            await owner.request('turn/start', { threadId: thread.id, input: [{ type: 'text', text: 'ASK ASYNC', text_elements: [] }] });
+            const started = record(record(await owner.request('turn/start', { threadId: thread.id, input: [{ type: 'text', text: 'ASK ASYNC', text_elements: [] }] })).turn);
             const { runSharedRuntime } = await import('./runtime');
             let ready!: (value: import('./runtime').RuntimeReady) => void;
             const readiness = new Promise<import('./runtime').RuntimeReady>(resolve => { ready = resolve; });
@@ -97,15 +115,54 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
             const attached = await Promise.race([readiness, running.then(() => { throw new Error('Runtime stopped'); })]);
             const web = state.sessions.get(attached.sessionId)!;
             await vi.waitFor(() => expect(Object.keys(web.state.requests ?? {}).some(id => id.startsWith('codex-async:'))).toBe(true), { timeout: 15_000 });
+            await vi.waitFor(() => expect(held.has(2)).toBe(true));
             const key = Object.keys(web.state.requests!).find(id => id.startsWith('codex-async:'))!;
             expect(web.messages).toContainEqual(expect.objectContaining({ type: 'tool-call', name: 'request_user_input', callId: key }));
-            await web.rpc.get(RPC_METHODS.Permission)!({ id: key, approved: true, answers: { '0': { answers: ['Expanded'] } } });
-            await vi.waitFor(() => expect(JSON.stringify(requests)).toContain('Choose the layout\\nExpanded'), { timeout: 15_000 });
-            expect(web.state.completedRequests?.[key]).toMatchObject({ status: 'approved', answers: { '0': { answers: ['Expanded'] } } });
+            web.user?.({ content: { text: 'ORDINARY FOLLOWUP' } }, 'ordinary-followup');
+            await vi.waitFor(async () => expect(record(await owner.request('thread/queue/list', { threadId: thread.id })).data).toHaveLength(1));
+            let answerTimeout: ReturnType<typeof setTimeout> | undefined;
+            try {
+                await Promise.race([
+                    web.rpc.get(RPC_METHODS.Permission)!({ id: key, approved: true, answers: { '0': { answers: ['展开'] } } }),
+                    new Promise<never>((_, reject) => { answerTimeout = setTimeout(() => reject(new Error('Answer waited for the active turn to finish')), 5_000); }),
+                ]);
+            } finally { clearTimeout(answerTimeout); }
+            const queued = record(await owner.request('thread/queue/list', { threadId: thread.id })).data as Array<{ clientUserMessageId: string }>;
+            expect(queued.map(item => item.clientUserMessageId)).toEqual(['ordinary-followup']);
+            expect(events.filter(event => event.method === 'turn/completed')).toHaveLength(0);
+            expect(web.state.completedRequests?.[key]).toMatchObject({ status: 'approved', answers: { '0': { answers: ['展开'] } } });
+            release(2);
+            await vi.waitFor(() => expect(held.has(3)).toBe(true), { timeout: 15_000 });
+            const third = JSON.stringify(requests[2]);
+            expect(third).toContain('send_user_message_question_reply');
+            expect(third).toContain('选择布局'); expect(third).toContain('展开');
+            expect(third).not.toContain('ORDINARY FOLLOWUP');
+            expect(events.filter(event => event.method === 'turn/completed')).toHaveLength(0);
+            release(3);
+            await vi.waitFor(() => expect(web.consumed).toContain('ordinary-followup'), { timeout: 15_000 });
+            await vi.waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(4));
+            expect(JSON.stringify(requests[3])).toContain('ORDINARY FOLLOWUP');
+            const completed = events.filter(event => event.method === 'turn/completed').map(event => record(record(event.params).turn).id);
+            expect(completed[0]).toBe(started.id);
+            await vi.waitFor(() => expect(events.filter(event => event.method === 'turn/completed')).toHaveLength(2));
+            // An optional question can remain unanswered after its originating
+            // turn has finished. The same native route must then start a turn.
+            await owner.request('turn/start', { threadId: thread.id, input: [{ type: 'text', text: 'ASK IDLE', text_elements: [] }] });
+            await vi.waitFor(() => expect(events.filter(event => event.method === 'turn/completed')).toHaveLength(3));
+            const idleKey = Object.keys(web.state.requests ?? {}).find(id => id.startsWith('codex-async:') && id !== key);
+            expect(idleKey).toBeDefined();
+            await web.rpc.get(RPC_METHODS.Permission)!({ id: idleKey, approved: true, answers: { '0': ['紧凑'] } });
+            await vi.waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(7));
+            expect(JSON.stringify(requests[6])).toContain('send_user_message_question_reply');
+            expect(JSON.stringify(requests[6])).toContain('紧凑');
+            expect(record(await owner.request('thread/queue/list', { threadId: thread.id })).data).toEqual([]);
             expect(engine.exitCode).toBeNull();
         } finally {
-            abort.abort(); await running; await owner.disconnect();
+            for (const { response } of held.values()) response.end();
+            abort.abort(); await owner.disconnect();
             if (engine.exitCode === null) { engine.kill('SIGTERM'); await new Promise<void>(resolve => engine.once('exit', () => resolve())); }
+            await running;
+            http.closeAllConnections();
             await new Promise<void>(resolve => http.close(() => resolve())); await rm(home, { recursive: true, force: true });
         }
     }, 60_000);

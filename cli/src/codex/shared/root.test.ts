@@ -65,6 +65,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
     const updateState = vi.fn((fn: (value: AgentState) => AgentState) => { state = fn(state); });
     const rpc = new Map<string, (raw: unknown) => Promise<unknown>>();
     const send = vi.fn();
+    const userMessages = vi.fn();
     const hubArchivedListeners: Array<() => void> = [];
     const session = {
         sessionId: 'sid', getMetadata: () => metadata,
@@ -78,7 +79,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
         },
         rpcHandlerManager: { registerHandler: (name: string, handler: (raw: unknown) => Promise<unknown>) => rpc.set(name, handler) },
         sendSessionEvent() {}, sendAgentMessage: send, emitSessionReady() {},
-        sendUserMessage() {}, emitMessagesConsumed() {}, emitSteerIndeterminate() {}, syncNativeQueuedMessage() {},
+        sendUserMessage: userMessages, emitMessagesConsumed() {}, emitSteerIndeterminate() {}, syncNativeQueuedMessage() {},
         sendSessionDeath() {}, async flush() {}, close() {}
     } as unknown as ApiSessionClient;
     const end = opts?.end ?? (async () => { throw new Error('Unexpected root archive'); });
@@ -100,7 +101,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
         abandoned(): void;
     };
     return {
-        root, native, rpc, send, metadata: () => metadata, state: () => state, updateState,
+        root, native, rpc, send, userMessages, metadata: () => metadata, state: () => state, updateState,
         reconnect: () => reconnect?.(),
         emitHubArchived: () => { for (const listener of hubArchivedListeners) listener(); },
         hubArchivedListenerCount: () => hubArchivedListeners.length,
@@ -448,4 +449,50 @@ it('tracks compaction only for the root and withdraws steering until completion'
     f.native.notify('item/completed', { threadId: 'thread', turnId: 'turn', item: { type: 'contextCompaction', id: 'root-compact' } });
     expect(f.state().codexCompaction).toBeNull();
     expect(f.state().steeringActive).toBe(true);
+});
+
+
+it('injects async answers immediately and projects them only after a native userMessage', async () => {
+    const f = await fixture();
+    const question = { type: 'agentMessage', id: 'question', delivery: 'async',
+        questions: [{ title: 'Choose a layout', options: ['Compact', 'Expanded'] }] };
+    f.native.notify('turn/started', { threadId: 'thread', turn: { id: 'working', status: 'inProgress' } });
+    f.native.notify('item/completed', { threadId: 'thread', turnId: 'working', item: question });
+    const id = 'codex-async:thread:question';
+    await vi.waitFor(() => expect(f.state().requests?.[id]).toBeDefined());
+    const request = vi.spyOn(f.root.client, 'request');
+    let accept!: (value: unknown) => void;
+    request.mockImplementationOnce(() => new Promise(resolve => { accept = resolve; }));
+    const submitting = f.rpc.get(RPC_METHODS.Permission)!({ id, approved: true, answers: { '0': ['Expanded'] } });
+    await vi.waitFor(() => expect(accept).toBeTypeOf('function'));
+    expect(request.mock.calls[0]).toMatchObject(['turn/start', { threadId: 'thread', clientUserMessageId: `${id}:answer` }]);
+    expect(f.userMessages).not.toHaveBeenCalled();
+    expect(f.state().requests?.[id]).toBeDefined();
+    accept({ turn: { id: 'working' } }); await submitting;
+    expect(f.native.queue).toEqual([]);
+    expect(f.userMessages).not.toHaveBeenCalled();
+    expect(f.state().completedRequests?.[id]?.status).toBe('approved');
+    const input = (request.mock.calls[0][1] as { input: unknown }).input;
+    f.native.notify('item/completed', { threadId: 'thread', turnId: 'working', item: {
+        id: 'native-answer', type: 'userMessage', clientId: `${id}:answer`, content: input,
+    } });
+    await vi.waitFor(() => expect(f.userMessages).toHaveBeenCalled());
+    expect(f.userMessages.mock.calls[0][0]).toContain('<send_user_message_question_reply>');
+    expect(f.userMessages.mock.calls[0][2]).toBe(`${id}:answer`);
+    expect(request.mock.calls.some(([method]) => method === 'thread/queue/add')).toBe(false);
+});
+
+it('leaves a rejected async answer actionable without publishing a user message', async () => {
+    const f = await fixture();
+    f.native.notify('item/completed', { threadId: 'thread', turnId: 'working', item: {
+        type: 'agentMessage', id: 'question', delivery: 'async', questions: [{ title: 'Choose' }],
+    } });
+    const id = 'codex-async:thread:question';
+    await vi.waitFor(() => expect(f.state().requests?.[id]).toBeDefined());
+    const request = vi.spyOn(f.root.client, 'request').mockRejectedValueOnce(new Error('Rejected by native'));
+    await expect(f.rpc.get(RPC_METHODS.Permission)!({ id, approved: true, answers: { '0': ['Answer'] } })).rejects.toThrow('Rejected by native');
+    expect(f.state().requests?.[id]).toBeDefined();
+    expect(f.state().completedRequests?.[id]).toBeUndefined();
+    expect(f.userMessages).not.toHaveBeenCalled();
+    expect(request.mock.calls.map(([method]) => method)).toEqual(['turn/start']);
 });

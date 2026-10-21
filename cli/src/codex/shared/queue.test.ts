@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SharedCodexQueue } from './queue';
+import { INDETERMINATE_SYMBOL } from '../codexAppServerClient';
 
 const input = [{ type: 'text', text: 'hello' }];
 const directories: string[] = [];
@@ -17,6 +18,63 @@ async function fixture() {
     return { queue, rpc, consumed, uncertain, client, dir };
 }
 describe('shared native queue', () => {
+    it('submits an async answer directly, without queueing or fabricating a consumed event', async () => {
+        const { queue, rpc, consumed } = await fixture();
+        rpc.mockResolvedValue({ turn: { id: 'active-turn' } });
+        await queue.submitAnswer('answer', input);
+        expect(rpc.mock.calls).toEqual([['turn/start', { threadId: 'thread', input, clientUserMessageId: 'answer' }]]);
+        expect(queue.state('answer')).toBe('consumed');
+        expect(consumed).not.toHaveBeenCalled();
+        await queue.submitAnswer('answer', input);
+        expect(rpc).toHaveBeenCalledOnce();
+        await queue.committed('answer');
+        expect(consumed).toHaveBeenCalledWith(['answer']);
+    });
+
+    it('allows retry after a definite answer rejection without falling back to the queue', async () => {
+        const { queue, rpc, consumed } = await fixture();
+        rpc.mockRejectedValueOnce(new Error('native rejected the input'));
+        await expect(queue.submitAnswer('answer', input)).rejects.toThrow('native rejected');
+        expect(queue.state('answer')).toBe('rejected');
+        expect(consumed).not.toHaveBeenCalled();
+        rpc.mockResolvedValueOnce({ turn: { id: 'new-turn' } });
+        await queue.submitAnswer('answer', input);
+        expect(rpc.mock.calls.map(([method]) => method)).toEqual(['turn/start', 'turn/start']);
+    });
+
+    it('does not repeat an uncertain answer after restart; native history can prove acceptance', async () => {
+        const { queue, rpc, client, dir, consumed, uncertain } = await fixture();
+        rpc.mockRejectedValueOnce(Object.assign(new Error('lost ACK'), { [INDETERMINATE_SYMBOL]: true }));
+        await expect(queue.submitAnswer('answer', input)).rejects.toThrow('lost ACK');
+        expect(queue.state('answer')).toBe('unknown');
+        expect(uncertain).toHaveBeenCalledWith(['answer']);
+        const restarted = new SharedCodexQueue(client, 'thread', join(dir, 'ledger.json'), consumed, uncertain);
+        await restarted.load();
+        await expect(restarted.submitAnswer('answer', input)).rejects.toThrow('not confirmed');
+        expect(rpc).toHaveBeenCalledOnce();
+        await restarted.committed('answer');
+        await restarted.submitAnswer('answer', input);
+        expect(rpc).toHaveBeenCalledOnce();
+    });
+
+    it('requires a valid native acceptance response before completing an answer', async () => {
+        const { queue, rpc, consumed } = await fixture();
+        rpc.mockResolvedValue({});
+        await expect(queue.submitAnswer('answer', input)).rejects.toThrow();
+        expect(queue.state('answer')).toBe('unknown');
+        expect(consumed).not.toHaveBeenCalled();
+    });
+
+    it('accepts native history proof even when the answer RPC subsequently loses its ACK', async () => {
+        const { queue, rpc } = await fixture();
+        rpc.mockImplementation(async () => {
+            await queue.committed('answer');
+            throw Object.assign(new Error('lost ACK'), { [INDETERMINATE_SYMBOL]: true });
+        });
+        await queue.submitAnswer('answer', input);
+        expect(queue.state('answer')).toBe('consumed');
+    });
+
     it('does not restore potentially stale input when the shutdown snapshot is unavailable', async () => {
         const { queue, rpc, uncertain } = await fixture();
         rpc.mockResolvedValueOnce({ queuedSubmission: { id: 'n', input, clientUserMessageId: 'local' } }); await queue.enqueue('local', input);

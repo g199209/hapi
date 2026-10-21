@@ -13,7 +13,7 @@ const LedgerSchema = z.record(z.string(), z.object({
 export type QueueInput = z.infer<typeof InputSchema>;
 type Entry = z.infer<typeof LedgerSchema>[string];
 
-/** Native queue is the only drainer. The ledger records uncertainty, not a second queue. */
+/** Native queue drains ordinary prompts. The ledger also guards immediate question replies. */
 export class SharedCodexQueue {
     private entries: Record<string, Entry> = {};
     private operations: Promise<unknown> = Promise.resolve();
@@ -160,6 +160,34 @@ export class SharedCodexQueue {
             if (entry.state === 'queued' || entry.state === 'released') this.mirror?.(id, entry.input);
             if (entry.state === 'canceled') this.mirror?.(id, null);
         }
+    }
+
+    /** Async answers use native turn/start: add input to an active turn or start
+     * one when idle, atomically in Codex. They never wait in the ordinary queue. */
+    submitAnswer(id: string, input: QueueInput): Promise<void> {
+        return this.serial(async () => {
+            const existing = this.entries[id];
+            if (existing?.state === 'consumed') return;
+            if (existing && !['rejected', 'canceled'].includes(existing.state)) {
+                throw new Error('Answer delivery is not confirmed; check native history before retrying');
+            }
+            const entry: Entry = { state: 'unknown', input };
+            this.entries[id] = entry; await this.save();
+            try {
+                z.object({ turn: z.object({ id: z.string() }) }).parse(await this.client.request('turn/start', {
+                    threadId: this.threadId, input, clientUserMessageId: id
+                }));
+                // Acceptance prevents replay, but only native userMessage events
+                // project a conversation row and acknowledge it to the Hub.
+                entry.state = 'consumed'; await this.save();
+            } catch (error) {
+                if (entry.state === 'consumed') return;
+                entry.state = isIndeterminateError(error) || error instanceof z.ZodError ? 'unknown' : 'rejected';
+                await this.save();
+                if (entry.state === 'unknown') this.uncertain([id]);
+                throw error;
+            }
+        });
     }
 
     enqueue(id: string, input: QueueInput, resumeInterrupted = false): Promise<void> {

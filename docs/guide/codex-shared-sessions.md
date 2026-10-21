@@ -130,12 +130,22 @@ Native pending queue text is mirrored to HAPI. Native edits and acknowledged
 removals update it. Losing a queue entry during transport recovery is not proof
 that it was canceled or executed.
 
-Codex arbitrates terminal/Web answers. A submitted Web answer is only a
+Codex arbitrates terminal/Web answers to blocking native requests. A submitted Web answer is only a
 candidate. Native `serverRequest/resolved` closes the prompt with neutral
 **Resolved in Codex** status; HAPI does not invent the winner or their answer.
 Disconnect withdraws the old controls; reconnect replays native pending requests.
 Canceling a question interrupts its native turn instead of sending an empty
 fabricated answer. Unknown side-client request types remain terminal-only.
+
+Async questions (`agentMessage` with `delivery: "async"`) remain answerable while
+Codex continues working. HAPI sends their native question-reply envelope through
+`turn/start`: Codex inserts it into the active turn, or starts a turn when idle.
+It does not put answers behind ordinary queued prompts or interrupt the turn.
+Only native user-message events add the reply to conversation history; a queue
+ACK never represents delivery. The question completes after native acceptance;
+rejection leaves it actionable. Persisted submission IDs prevent replay after an
+uncertain ACK, and native history can resolve that uncertainty on retry/reconnect.
+Ordinary prompts keep their existing queue behavior.
 
 Each root has its own HAPI socket, MCP bridge and shell `HAPI_SESSION_ID`.
 Child-agent traces/permissions are attributed by native ancestry, not merely by

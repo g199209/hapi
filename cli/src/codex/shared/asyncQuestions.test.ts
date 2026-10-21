@@ -41,7 +41,10 @@ describe('Codex asynchronous question bridge', () => {
     it('submits exactly one correlated user reply and preserves the answer after restart', async () => {
         const f = await fixture(); await f.bridge.receive(item);
         expect(await f.bridge.answer({ id: key, approved: true, answers })).toBe(true);
-        expect(f.submit).toHaveBeenCalledWith(`${key}:answer`, 'Choose a layout\nCompact\n\nAny notes?\nUse small text');
+        expect(f.submit).toHaveBeenCalledWith(`${key}:answer`, `<send_user_message_question_reply>\n${JSON.stringify([
+            { questionItemId: 'ask', question: 'Choose a layout', answer: 'Compact' },
+            { questionItemId: 'ask', question: 'Any notes?', answer: 'Use small text' },
+        ])}\n</send_user_message_question_reply>\n`);
         expect(f.state().requests?.[key]).toBeUndefined();
         expect(f.state().completedRequests?.[key]).toMatchObject({ status: 'approved', answers });
         const again = await f.reopen(); await again.receive(item);

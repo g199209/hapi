@@ -220,9 +220,8 @@ export class SharedCodexRoot {
         this.asyncQuestions = new SharedCodexAsyncQuestions(this.session, threadId,
             join(this.host.directory, `${this.session.sessionId}.questions.json`), async (id, text) => {
                 if (this.closed || this.stopping) throw new Error('Session is disconnecting');
-                this.session.sendUserMessage(text, undefined, id);
-                await this.queue.enqueue(id, buildUserInputFromMessage(text), this.interrupted);
-                if (!['queued', 'consumed'].includes(this.queue.state(id) ?? '')) throw new Error('Answer delivery is not confirmed; retry to reconcile');
+                if (this.queue.state(id) === 'unknown') await this.refresh();
+                await this.queue.submitAnswer(id, buildUserInputFromMessage(text));
             });
         await this.asyncQuestions.load();
         this.permissions.setAsyncReplyHandler(reply => this.asyncQuestions.answer(reply));
