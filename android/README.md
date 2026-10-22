@@ -42,6 +42,12 @@ differences, pairing and features currently available through the web.
   Retry/Steer are hidden during compaction. Completion removes only the hint:
   delivery still requires the native acknowledgement/history. Versioned state
   is restored on reconnect and cleared on idle, disconnect or shutdown.
+- **HTML reports:** explicit absolute file citations open on the session's
+  machine, including files outside the repository. HTML/HTM files default to
+  Preview with pan, pinch zoom and selectable browser text; Source uses bounded
+  parts with full-content copy/export. Relative images, CSS and scripts use the
+  same Runner-backed file API. Browser state survives rotation and Source
+  switching; the report browser has a synthetic origin and no Hub credentials.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Image/file drafts retain their thumbnail,
   upload path and pending retry bytes per Hub/session. Preparation and uploads

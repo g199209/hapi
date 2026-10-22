@@ -1,6 +1,7 @@
 package app.hapi.companion.feature.files
 
 import android.graphics.BitmapFactory
+import android.os.Bundle
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -45,10 +47,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.hapi.companion.R
+import app.hapi.companion.feature.chat.rememberChatLinkHandler
+import app.hapi.companion.feature.chat.PagedTextContent
 import app.hapi.companion.ui.components.DiffView
 import app.hapi.companion.ui.markdown.CodeBlock
 import app.hapi.companion.ui.markdown.Markdown
 import app.hapi.companion.ui.theme.hapi
+import app.hapi.protocol.markdown.HrefPolicy
 import kotlinx.coroutines.delay
 
 /**
@@ -69,6 +74,7 @@ fun FileViewerScreen(
     viewModel: FileViewerViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenFile: (String, Int?) -> Unit = { _, _ -> },
 ) {
     DisposableEffect(viewModel) {
         viewModel.start()
@@ -77,6 +83,7 @@ fun FileViewerScreen(
 
     val state by viewModel.state.collectAsState()
     val colors = MaterialTheme.hapi
+    val linkHandler = rememberChatLinkHandler(onOpenFile)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -119,7 +126,19 @@ fun FileViewerScreen(
             PathRow(path = state.path)
             ModeToggleRow(state, viewModel)
 
-            Column(
+            val html = (state.content as? FileContentUiState.Text)?.takeIf { it.isHtml }
+            val htmlState = rememberSaveable(state.path, html?.text?.hashCode()) { Bundle() }
+            if (html != null && state.mode == ViewerMode.FILE && state.markdownPreview) {
+                HtmlReportPreview(
+                    path = state.path,
+                    html = html.text,
+                    readResource = viewModel::readResource,
+                    onOpenFile = { onOpenFile(it, null) },
+                    onOpenUrl = { linkHandler.onUrl(it, HrefPolicy.classify(it)) },
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    savedState = htmlState,
+                )
+            } else Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
@@ -182,8 +201,9 @@ private fun PathRow(path: String) {
 @Composable
 private fun ModeToggleRow(state: FileViewerUiState, viewModel: FileViewerViewModel) {
     val hasDiff = state.diff is DiffUiState.Ready
-    val isMarkdownFile = (state.content as? FileContentUiState.Text)?.isMarkdown == true
-    if (!hasDiff && !isMarkdownFile && state.focusLine == null) return
+    val document = state.content as? FileContentUiState.Text
+    val hasPreview = document?.let { it.isMarkdown || it.isHtml } == true
+    if (!hasDiff && !hasPreview && state.focusLine == null) return
 
     Row(
         modifier = Modifier
@@ -201,7 +221,7 @@ private fun ModeToggleRow(state: FileViewerUiState, viewModel: FileViewerViewMod
             ModeChip(stringResource(R.string.files_viewer_unstaged), !state.staged) { viewModel.setStaged(false) }
             ModeChip(stringResource(R.string.files_viewer_staged), state.staged) { viewModel.setStaged(true) }
         }
-        if (isMarkdownFile && state.mode == ViewerMode.FILE) {
+        if (hasPreview && state.mode == ViewerMode.FILE) {
             if (hasDiff) Text("·", color = MaterialTheme.hapi.hint)
             ModeChip(stringResource(R.string.files_viewer_source), !state.markdownPreview) { viewModel.setMarkdownPreview(false) }
             ModeChip(stringResource(R.string.files_viewer_preview), state.markdownPreview) { viewModel.setMarkdownPreview(true) }
@@ -260,6 +280,10 @@ private fun FileContent(state: FileViewerUiState) {
         is FileContentUiState.Text ->
             if (content.isMarkdown && state.markdownPreview) {
                 Markdown(text = content.text, modifier = Modifier.fillMaxWidth())
+            } else if (content.isHtml) {
+                // Reports often embed large base64 images in one source line.
+                // Mount one bounded part and retain full-source copy/export.
+                PagedTextContent(content.text) { part -> CodeBlock(part, content.language, Modifier.fillMaxWidth()) }
             } else {
                 CodeBlock(
                     code = content.text,

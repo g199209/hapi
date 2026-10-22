@@ -238,7 +238,7 @@ object MarkdownTransforms {
      */
     val COMMON_FILE_EXTENSIONS: Set<String> = setOf(
         "adoc", "astro", "avif", "bat", "bmp", "c", "cfg", "cjs", "conf", "cpp", "css", "csv",
-        "env", "gif", "go", "gql", "gradle", "graphql", "h", "hpp", "html", "ico", "ini", "java",
+        "env", "gif", "go", "gql", "gradle", "graphql", "h", "hpp", "htm", "html", "ico", "ini", "java",
         "jpeg", "jpg", "js", "json", "jsx", "kt", "lock", "md", "mdx", "mjs", "mmd", "php", "png",
         "prisma", "properties", "proto", "ps1", "puml", "py", "rb", "rs", "rst", "scss", "sh",
         "sql", "svelte", "svg", "swift", "tex", "toml", "ts", "tsv", "tsx", "txt", "vue", "webp",
@@ -397,8 +397,8 @@ object MarkdownTransforms {
      * Explicit `[label](target)` rewrite (web `rewriteFileLinkNode`): returns the
      * workspace file path a markdown link should open, or null when the target
      * must keep its URL semantics. `#fragment` / `?query` / `:line` suffixes are
-     * stripped; POSIX-absolute and scheme-bearing (colon) targets are rejected;
-     * Windows-absolute targets require an allowlisted extension.
+     * stripped. Explicit absolute paths with a known extension are read on the
+     * session's machine; scheme-bearing URLs retain their URL semantics.
      */
     fun rewriteExplicitLinkTarget(url: String): String? {
         if (url.isEmpty()) return null
@@ -412,12 +412,16 @@ object MarkdownTransforms {
             else -> -1
         }
         val withoutMeta = if (cut >= 0) url.substring(0, cut) else url
-        val target = stripLineSuffix(withoutMeta)
+        val decoded = try {
+            java.net.URLDecoder.decode(withoutMeta.replace("+", "%2B"), "UTF-8")
+        } catch (_: IllegalArgumentException) { return null }
+        val target = stripLineSuffix(decoded)
 
         if (isWindowsAbsolutePath(target)) {
             return if (hasKnownFileExtension(target)) target else null
         }
-        if (target.startsWith("/") && !target.startsWith("//")) return null
+        if (target.startsWith("//")) return null
+        if (target.startsWith("/")) return if (hasKnownFileExtension(target)) target else null
         if (target.contains(':')) return null
         if (!shouldLinkPath(target)) return null
         return target

@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile } from 'fs/promises'
 import { createHash } from 'crypto'
-import { resolve } from 'path'
+import { isAbsolute, resolve } from 'path'
 import type { FileReadResponse, GeneratedImageResponse } from '@hapi/protocol/apiTypes'
 import { RPC_METHODS } from '@hapi/protocol/rpcMethods'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -37,9 +37,12 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
     rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>(RPC_METHODS.ReadFile, async (data) => {
         logger.debug('Read file request:', data.path)
 
-        const validation = validatePath(data.path, workingDirectory)
-        if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path')
+        // Explicit absolute citations refer to files on this session's machine,
+        // including reports outside the repository. Relative reads and all
+        // writes retain workspace containment; OS permissions govern reads.
+        if (!isAbsolute(data.path)) {
+            const validation = validatePath(data.path, workingDirectory)
+            if (!validation.valid) return rpcError(validation.error ?? 'Invalid file path')
         }
 
         try {

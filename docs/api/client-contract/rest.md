@@ -186,7 +186,7 @@ Source: `hub/src/web/routes/git.ts`. Git endpoints return the **raw command outp
 | `GET /api/sessions/:id/git-status` | — | `GitCommandResponse` (raw `git status` stdout) |
 | `GET /api/sessions/:id/git-diff-numstat` | Query: `staged=true\|false` | `GitCommandResponse` (raw `git diff --numstat` stdout) |
 | `GET /api/sessions/:id/git-diff-file` | Query: `path` (required), `staged?` | `GitCommandResponse` (raw unified diff) |
-| `GET /api/sessions/:id/file` | Query: `path` (required) | `{success, content?, size?, modified?, error?}` — `content` is **base64** (decode before display; web ref: `web/src/routes/sessions/file.tsx`) |
+| `GET /api/sessions/:id/file` | Query: `path` (required) | `{success, content?, size?, modified?, error?}` — `content` is **base64**. Explicit absolute paths read files accessible to the session's OS account on its machine; relative paths stay within the workspace. File writes retain workspace containment. Web ref: `web/src/routes/sessions/file.tsx`. |
 | `GET /api/sessions/:id/files` | Query: `query?`, `limit?` (1–500, default 200) | `{success, files: [{fileName, filePath, fullPath, fileType: 'file', size?, modified?}]}` (ripgrep-backed search) |
 | `GET /api/sessions/:id/directory` | Query: `path?` (empty = session root) | `{success, entries?: [{name, type: 'file'\|'directory'\|'other', size?, modified?}], error?}` |
 

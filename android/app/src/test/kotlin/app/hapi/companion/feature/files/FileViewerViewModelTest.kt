@@ -47,6 +47,23 @@ class FileViewerViewModelTest {
     """.trimIndent()
 
     @Test
+    fun `absolute HTML reports default to preview and preserve source`() = runTest {
+        val html = "<!doctype html><h1>中文 report</h1>"
+        val gateway = FakeFilesGateway().apply {
+            diffFileResult = GitCommandResponse(success = false, error = "outside repository")
+            readFileResult = FileReadResponse(success = true, content = b64(html))
+        }
+        val model = buildViewModel(gateway, path = "/Share/reports/report.HTML", mode = ViewerMode.FILE)
+        model.start(); advanceUntilIdle()
+        val content = assertIs<FileContentUiState.Text>(model.state.value.content)
+        assertTrue(content.isHtml)
+        assertEquals(html, content.text)
+        assertTrue(model.state.value.markdownPreview)
+        model.setMarkdownPreview(false)
+        assertEquals(false, model.state.value.markdownPreview)
+    }
+
+    @Test
     fun `parses the diff and stays in diff mode`() = runTest {
         val gateway = FakeFilesGateway().apply {
             diffFileResult = GitCommandResponse(success = true, stdout = sampleDiff)

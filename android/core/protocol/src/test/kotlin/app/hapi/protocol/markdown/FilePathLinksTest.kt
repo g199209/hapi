@@ -136,8 +136,16 @@ class FilePathLinksTest {
     }
 
     @Test
-    fun `keeps url semantics for absolute schemed and unknown targets`() {
-        assertNull(MarkdownTransforms.rewriteExplicitLinkTarget("/abs/a.ts"))
+    fun `opens explicit absolute citations and decodes spaces without changing plus signs`() {
+        assertEquals("/Share/mingfei/report.html", MarkdownTransforms.rewriteExplicitLinkTarget("/Share/mingfei/report.html"))
+        assertEquals("/home/a/my report+a.html", MarkdownTransforms.rewriteExplicitLinkTarget("/home/a/my%20report+a.html"))
+        assertEquals("/abs/a.ts", MarkdownTransforms.rewriteExplicitLinkTarget("/abs/a.ts:12"))
+    }
+
+    @Test
+    fun `keeps url semantics for schemed and unknown targets`() {
+        assertNull(MarkdownTransforms.rewriteExplicitLinkTarget("//host/report.html"))
+        assertNull(MarkdownTransforms.rewriteExplicitLinkTarget("/bad%ZZ.html"))
         assertNull(MarkdownTransforms.rewriteExplicitLinkTarget("https://x.com/a.ts"))
         assertNull(MarkdownTransforms.rewriteExplicitLinkTarget("mailto:a@b.c"))
         assertNull(MarkdownTransforms.rewriteExplicitLinkTarget("../up.ts"))

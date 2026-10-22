@@ -46,4 +46,19 @@ describe('file RPC handlers', () => {
         expect(parsed.size).toBe(expectedStats.size)
         expect(parsed.modified).toBe(expectedStats.mtime.getTime())
     })
+
+    it('reads an explicit absolute report outside the workspace on the session machine', async () => {
+        const outside = await createTempDir('hapi-report')
+        try {
+            const path = join(outside, 'report.html')
+            await writeFile(path, '<h1>Report</h1>')
+            const result = JSON.parse(await rpc.handleRequest({ method: 'session-test:readFile', params: JSON.stringify({ path }) }))
+            expect(result.success).toBe(true)
+            expect(Buffer.from(result.content, 'base64').toString()).toBe('<h1>Report</h1>')
+            const relative = JSON.parse(await rpc.handleRequest({ method: 'session-test:readFile', params: JSON.stringify({ path: '../outside.html' }) }))
+            expect(relative.success).toBe(false)
+            const write = JSON.parse(await rpc.handleRequest({ method: 'session-test:writeFile', params: JSON.stringify({ path, content: 'eA==' }) }))
+            expect(write.success).toBe(false)
+        } finally { await rm(outside, { recursive: true, force: true }) }
+    })
 })

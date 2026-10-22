@@ -49,6 +49,7 @@ sealed interface FileContentUiState {
         /** Lowercased extension, fed to the `CodeBlock` highlighter. */
         val language: String?,
         val isMarkdown: Boolean,
+        val isHtml: Boolean = false,
     ) : FileContentUiState
 
     /** Raw image bytes for `BitmapFactory` (identity equality is fine here). */
@@ -132,6 +133,8 @@ class FileViewerViewModel(
     fun setMarkdownPreview(preview: Boolean) {
         stateFlow.update { it.copy(markdownPreview = preview) }
     }
+
+    suspend fun readResource(resourcePath: String): FileReadResponse = gateway.readFile(sessionId, resourcePath)
 
     // ---------------------------------------------------------------- diff --
 
@@ -223,6 +226,7 @@ class FileViewerViewModel(
                 text = text,
                 language = fileExtension(path),
                 isMarkdown = isMarkdownFile(path),
+                isHtml = fileExtension(path) in setOf("html", "htm"),
             ),
             response.size,
             response.modified,

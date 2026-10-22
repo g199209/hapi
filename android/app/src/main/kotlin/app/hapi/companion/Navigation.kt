@@ -433,6 +433,9 @@ fun HapiNavigation() {
             FileViewerScreen(
                 viewModel = holder.viewModel,
                 onBack = { navController.popBackStack() },
+                onOpenFile = { target, focus ->
+                    navController.navigate(Routes.fileViewer(sessionId, target, mode = "file", line = focus))
+                },
             )
         }
 
