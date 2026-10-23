@@ -50,6 +50,8 @@ internal fun ChatHost(
     onOpenFile: (String, Int?) -> Unit,
     onOpenScratchlist: (() -> Unit)?,
     onForkedSession: (String) -> Unit = onNavigateToSession,
+    showActivity: Boolean = true,
+    onShowActivityChange: (Boolean) -> Unit = {},
 ) {
     val navigation = rememberNavController()
     val entry by navigation.currentBackStackEntryAsState()
@@ -146,6 +148,8 @@ internal fun ChatHost(
                         dictation = dictation, pickers = pickers, onOpenFiles = { pauseReading(); onOpenFiles() }, onOpenFile = openFile,
                         onOpenScratchlist = onOpenScratchlist?.let { open -> { pauseReading(); open() } },
                         transcriptList = transcriptList, readingState = reading,
+                        showActivity = showActivity,
+                        onShowActivityChange = onShowActivityChange,
                     )
                 }
                 for (kind in listOf("group", "tool", "process", "message")) {

@@ -112,6 +112,8 @@
     <string name="settings_load_error">Не удалось загрузить эту панель.</string>
     <string name="settings_owner_only">Эта панель доступна только владельцу хаба (пространство имён по умолчанию).</string>
 
+    <string name="chat_config_show_activity">Показывать вызовы инструментов и thinking</string>
+    <string name="chat_config_show_activity_description">Для текущей сессии: когда выключено, последовательные вызовы инструментов и thinking заменяются одной линией. Вопросы и запросы подтверждения остаются видимыми.</string>
     <string name="settings_section_appearance">Оформление</string>
     <string name="settings_theme">Тема</string>
     <string name="settings_theme_system">Как в системе</string>

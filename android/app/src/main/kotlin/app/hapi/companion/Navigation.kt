@@ -34,6 +34,7 @@ import app.hapi.companion.di.viewModelFactory
 import app.hapi.companion.feature.chat.ChatMedia
 import app.hapi.companion.feature.chat.ChatHost
 import app.hapi.companion.feature.chat.ChatViewModel
+import app.hapi.companion.feature.chat.rememberSessionActivity
 import app.hapi.companion.feature.chat.composer.DictationController
 import app.hapi.companion.feature.chat.composer.HapiDictationApi
 import app.hapi.companion.feature.chat.composer.MediaRecorderDictation
@@ -345,8 +346,16 @@ fun HapiNavigation() {
                     key = "chat:${hubGraph.hubUrl}:$sessionId",
                     factory = viewModelFactory { ChatViewModelHolder(hubGraph, sessionId, appContext) },
                 )
+                val showChatActivity by rememberSessionActivity(graph.chatDisplayPrefs, hubGraph.hubUrl, sessionId)
+                // Mount the saved layout once its session preference is known.
+                // Rendering a temporary default can disturb a restored history anchor.
+                val activityVisible = showChatActivity ?: return@composable
                 ChatHost(
                     viewModel = holder.viewModel,
+                    showActivity = activityVisible,
+                    onShowActivityChange = { enabled ->
+                        graph.scope.launch { graph.chatDisplayPrefs.setShowActivity(hubGraph.hubUrl, sessionId, enabled) }
+                    },
                     media = remember(hubGraph, sessionId) {
                         ChatMedia(hubGraph.imageLoader) { imageId ->
                             hubGraph.generatedImageUrl(sessionId, imageId)

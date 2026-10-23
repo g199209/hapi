@@ -109,6 +109,8 @@ internal fun ChatScreen(
     onOpenScratchlist: (() -> Unit)? = null,
     transcriptList: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     readingState: TranscriptReadingState = rememberTranscriptReadingState(viewModel.sessionId),
+    showActivity: Boolean = true,
+    onShowActivityChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val restoration by viewModel.restoration.collectAsState()
@@ -396,6 +398,7 @@ internal fun ChatScreen(
                             onRetryHistory = viewModel::loadOlder,
                             onJumpToLatest = viewModel::jumpToLatest,
                             listState = transcriptList, readingState = readingState,
+                            showActivity = showActivity,
                         )
                     }
                     if (!state.loadFailed) state.warning?.let { warning ->
@@ -423,6 +426,8 @@ internal fun ChatScreen(
     if (configSheetOpen) {
         SessionConfigSheet(
             config = configState,
+            showActivity = showActivity,
+            onShowActivityChange = onShowActivityChange,
             onDismiss = { configSheetOpen = false },
             onSetPermissionMode = viewModel::setPermissionMode,
             onSetModel = viewModel::setModel,

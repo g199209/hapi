@@ -112,6 +112,8 @@
     <string name="settings_load_error">Could not load this dashboard.</string>
     <string name="settings_owner_only">This dashboard is only available to the hub owner (default namespace).</string>
 
+    <string name="chat_config_show_activity">Show tool calls and thinking</string>
+    <string name="chat_config_show_activity_description">For this session, replace consecutive tool calls and thinking with one divider when off. Pending questions and approvals stay visible.</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_theme_system">Follow system</string>

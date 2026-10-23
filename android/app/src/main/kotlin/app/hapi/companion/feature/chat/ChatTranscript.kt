@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,16 +41,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.hapi.companion.R
 import app.hapi.data.store.ChatHistoryPagingState
-import app.hapi.protocol.chat.VisibleChatBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 
 private const val HISTORY_KEY = "chat-history-control"
-
-private data class TranscriptItem(val block: VisibleChatBlock) {
-    val id: String get() = block.stableId
-}
 
 /** Positive-order keys preserve the TOP reading anchor, including tall rows
  * whose bottom is still streaming. Prepend placement uses a full-list key lookup. */
@@ -66,9 +62,14 @@ internal fun ChatTranscript(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     readingState: TranscriptReadingState = rememberTranscriptReadingState(state.sessionId),
+    showActivity: Boolean = true,
 ) {
-    AnchoredTranscript(state, listState, readingState) { presented ->
-        TranscriptContent(presented, paging, jumpToken, jumpingLatest, onViewport, onLayout,
+    val planActions = LocalChatInteractions.current?.codexPlanActions ?: CodexPlanActions()
+    val rows = remember(state.blocks, showActivity, planActions, state.pendingActionBlockIds) {
+        transcriptRows(state.blocks, showActivity, planActions, state.pendingActionBlockIds)
+    }
+    AnchoredTranscript(TranscriptSnapshot(state, rows), listState, readingState) { presented ->
+        TranscriptContent(presented.state, presented.rows, paging, jumpToken, jumpingLatest, onViewport, onLayout,
             onRetryHistory, onJumpToLatest, modifier, listState, readingState)
     }
 }
@@ -76,6 +77,7 @@ internal fun ChatTranscript(
 @Composable
 private fun TranscriptContent(
     state: ChatUiState,
+    rows: List<TranscriptRow>,
     paging: ChatHistoryPagingState,
     jumpToken: Long,
     jumpingLatest: Boolean,
@@ -89,7 +91,6 @@ private fun TranscriptContent(
 ) {
     val rowState = rememberSaveableStateHolder()
     val stateKeys = remember(state.sessionId) { mutableSetOf<String>() }
-    val rows = remember(state.blocks) { state.blocks.map(::TranscriptItem) }
     val heights = remember(state.sessionId) { mutableMapOf<String, Int>() }
     val density = LocalDensity.current
     val estimatedHeight = with(density) { 100.dp.roundToPx() }
@@ -256,13 +257,21 @@ private fun TranscriptContent(
             item(key = HISTORY_KEY, contentType = HISTORY_KEY) {
                 HistoryControl(paging.phase, state.hasMore, state.isSyncingTail, onRetryHistory)
             }
-            items(rows, key = { it.id }, contentType = { it.block.contentKind }) { row ->
+            items(rows, key = { it.id }, contentType = { it.contentKind }) { row ->
                 rowState.SaveableStateProvider(row.id) {
                     val rowModifier = Modifier
                         .onSizeChanged { heights[row.id] = it.height }
                         .testTag("chat-row-" + row.id)
                     app.hapi.companion.ui.theme.ReadingColumn(modifier = rowModifier) {
-                        ChatBlockCard(block = row.block, basePath = state.basePath, processSteps = state.processSteps[row.id])
+                        when (row) {
+                            is TranscriptRow.Content -> ChatBlockCard(
+                                block = row.block, basePath = state.basePath, processSteps = state.processSteps[row.id],
+                            )
+                            is TranscriptRow.ActivityDivider -> HorizontalDivider(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag("chat-activity-divider"),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
                     }
                 }
             }

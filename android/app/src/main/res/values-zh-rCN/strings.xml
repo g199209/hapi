@@ -119,6 +119,8 @@
     <string name="settings_load_error">无法加载此看板。</string>
     <string name="settings_owner_only">此看板仅对 hub 所有者（default 命名空间）可用。</string>
 
+    <string name="chat_config_show_activity">显示工具调用和 Thinking</string>
+    <string name="chat_config_show_activity_description">关闭后，将当前会话中连续的工具调用和 Thinking 合并为一条分割线；需要操作的问题和审批仍会显示。</string>
     <string name="settings_section_appearance">外观</string>
     <string name="settings_theme">主题</string>
     <string name="settings_theme_system">跟随系统</string>

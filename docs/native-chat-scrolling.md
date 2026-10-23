@@ -115,6 +115,15 @@ history requests from the inspector.
 ### Android
 
 `ChatTranscript` uses a chronological `LazyColumn`, not `reverseLayout`.
+Android's per-session tools/thinking switch defaults to hidden for unset
+sessions and retains explicit choices. The chat settings gear creates
+presentation rows, collapsing
+each hidden run to one divider without changing protocol blocks or inspectors.
+Pending questions/approvals and active plan menus remain visible. A process
+containing a pending child request keeps its inspector entry. Display rows carry
+their source IDs so switching visibility or prepending into a hidden run can
+map the reading anchor through the new layout. Hidden-only pages still report
+their rendered history version; streaming a hidden run does not grow its row.
 `AnchoredTranscript` supplements stable keys with a full-snapshot
 ID-to-index lookup: Foundation 1.8.1 only looks up nearby keys, so a large prepend
 can otherwise retain an obsolete index. The history control is excluded from

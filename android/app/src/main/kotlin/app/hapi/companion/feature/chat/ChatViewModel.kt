@@ -162,6 +162,7 @@ data class ChatUiState(
     val messagesVersion: Long = 0,
     val requiresLatestReset: Boolean = false,
     val processSteps: Map<String, Int> = emptyMap(),
+    val pendingActionBlockIds: Set<String> = emptySet(),
     val historyAvailability: app.hapi.companion.feature.chat.history.HistoryAvailability = app.hapi.companion.feature.chat.history.HistoryAvailability(),
 )
 
@@ -1994,6 +1995,7 @@ class ChatViewModel(
             flavor = inputs.detail?.metadata?.flavor ?: inputs.summary?.metadata?.flavor,
             basePath = inputs.detail?.metadata?.path ?: inputs.summary?.metadata?.path,
             blocks = transcriptProjection.project(visibleBlocks),
+            pendingActionBlockIds = pendingActivityBlocks(visibleBlocks),
             processSteps = visibleBlocks.filterIsInstance<ToolCallBlock>().filter(::opensToolProcess)
                 .associate { it.id to it.children.size },
             permissionOverrides = inputs.permissionOverrides,

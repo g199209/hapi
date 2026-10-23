@@ -24,6 +24,15 @@ controls follow agent/session capabilities; usage/storage require the owner
 namespace. See the [native app guide](../docs/guide/native-apps.md) for platform
 differences, pairing and features currently available through the web.
 
+The first switch in the chat's **Session settings** gear controls tool calls
+and thinking for that session. Unset sessions default to hidden. Explicit choices
+persist locally per Hub and session across app restarts. Turning it off replaces each consecutive run of
+tools, groups and reasoning with one plain divider. Questions, approvals and plan decisions awaiting a response
+remain usable, including a process entry with a pending child request. Answered
+activity joins the surrounding divider. Conversation data and inspectors retain
+the full content; switching visibility preserves a visible message's reading
+anchor.
+
 - **Session actions:** pin/archive plus Rename, Delete and explicit Reopen
   from the list/chat actions. The list action sheet also offers local, persisted
   **Mark unread** and **Copy session reference** using the WebUI citation grammar.

@@ -100,6 +100,8 @@ class AppGraph(context: Context) {
     /** Language choice (B-M5a: applied via per-app locales; Settings writes it). */
     val languagePrefs: LanguagePrefs = LanguagePrefs(appContext.hapiDataStore)
 
+    val chatDisplayPrefs = app.hapi.companion.feature.settings.ChatDisplayPrefs(appContext.hapiDataStore)
+
     /**
      * Eagerly-cached language for non-composable surfaces (B-M5a): FCM
      * notifications and WorkManager updates resolve strings from the

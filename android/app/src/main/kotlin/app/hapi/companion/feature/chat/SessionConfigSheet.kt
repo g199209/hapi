@@ -8,23 +8,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.hapi.companion.R
+import app.hapi.companion.feature.settings.ChatDisplayPrefs
 import app.hapi.companion.ui.theme.HapiTheme
 import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.catalog.CatalogOption
@@ -32,6 +42,13 @@ import app.hapi.protocol.catalog.ModelCatalog
 import app.hapi.protocol.catalog.PermissionMode
 import app.hapi.protocol.catalog.PermissionModeTone
 import app.hapi.protocol.catalog.PermissionModes
+
+/** A different session gets its own initial state while its preference is being read. */
+@Composable
+internal fun rememberSessionActivity(prefs: ChatDisplayPrefs, hubUrl: String, sessionId: String): State<Boolean?> =
+    key(hubUrl, sessionId) {
+        remember { prefs.showActivity(hubUrl, sessionId) }.collectAsState(initial = null)
+    }
 
 /**
  * Session config sheet (B-M3b): permission mode / model / effort sections,
@@ -48,12 +65,16 @@ fun SessionConfigSheet(
     onSetModel: (String?) -> Unit,
     onSetEffort: (String?) -> Unit,
     onLoadModelOptions: () -> Unit,
+    showActivity: Boolean = true,
+    onShowActivityChange: (Boolean) -> Unit = {},
 ) {
     LaunchedEffect(Unit) { onLoadModelOptions() }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         SessionConfigSheetContent(
             config = config,
+            showActivity = showActivity,
+            onShowActivityChange = onShowActivityChange,
             onSetPermissionMode = onSetPermissionMode,
             onSetModel = onSetModel,
             onSetEffort = onSetEffort,
@@ -67,6 +88,8 @@ internal fun SessionConfigSheetContent(
     onSetPermissionMode: (PermissionMode) -> Unit,
     onSetModel: (String?) -> Unit,
     onSetEffort: (String?) -> Unit,
+    showActivity: Boolean = true,
+    onShowActivityChange: (Boolean) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -76,6 +99,21 @@ internal fun SessionConfigSheetContent(
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .testTag("chat-config-show-activity")
+                .toggleable(value = showActivity, role = Role.Switch, onValueChange = onShowActivityChange)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.chat_config_show_activity), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.chat_config_show_activity_description),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(showActivity, onCheckedChange = null, modifier = Modifier.padding(start = 12.dp))
+        }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         if (!config.active) {
             Notice(stringResource(R.string.chat_config_offline_note))
         } else if (config.controlledByUser) {
