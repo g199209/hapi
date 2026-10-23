@@ -633,4 +633,7 @@
     <string name="mermaid_fullscreen">全屏查看图表</string>
     <string name="mermaid_close">关闭图表</string>
     <string name="mermaid_error">无法渲染图表</string>
+    <string name="hub_opening_connecting">正在连接 HAPI…</string>
+    <string name="hub_opening_failed">无法连接到 HAPI</string>
+    <string name="hub_opening_failed_hint">请检查网络和服务器状态，然后重试。</string>
 </resources>

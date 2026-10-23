@@ -23,6 +23,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
@@ -45,6 +46,7 @@ import app.hapi.companion.feature.files.FilesStrings
 import app.hapi.companion.feature.files.FilesViewModel
 import app.hapi.companion.feature.files.ViewerMode
 import app.hapi.companion.feature.home.HomeScreen
+import app.hapi.companion.feature.home.HubOpeningBoundary
 import app.hapi.companion.feature.newsession.ApiNewSessionGateway
 import app.hapi.companion.feature.newsession.NewSessionPrefs
 import app.hapi.companion.feature.newsession.NewSessionScreen
@@ -233,345 +235,359 @@ fun HapiNavigation() {
 
     ObserveActiveHubNavigation(navController, registryState.activeHubUrl)
 
-    NavHost(navController = navController, startDestination = startDestination) {
-        composable(Routes.HOME) {
-            val activeHubUrl = registryState.activeHubUrl ?: return@composable
-            val hubGraph = activeHubGraph ?: return@composable
-            val scope = rememberCoroutineScope()
-            val holder = viewModel<SessionListViewModelHolder>(
-                key = "sessions",
-                factory = viewModelFactory { SessionListViewModelHolder() },
-            )
-            HomeScreen(
-                viewModel = holder.forHub(hubGraph),
-                activeHubUrl = activeHubUrl,
-                pairedHubs = registryState.hubs,
-                onSwitchHub = { hub -> scope.launch { graph.hubRegistry.setActiveHub(hub) } },
-                onPairAnotherHub = { navController.navigate(Routes.PAIRING) },
-                onSignOut = { scope.launch { graph.signOut(activeHubUrl) } },
-                onOpenSession = { sessionId -> navController.navigate(Routes.chat(sessionId)) },
-                onNewSession = { navController.navigate(Routes.newSession()) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-            )
-        }
+    val opening by graph.hubOpeningState.collectAsState()
+    val currentEntry by navController.currentBackStackEntryAsState()
+    val onPairing = currentEntry?.destination?.hierarchy?.any { it.route == Routes.PAIRING } == true
+    val openingScope = rememberCoroutineScope()
+    HubOpeningBoundary(
+        hubUrl = registryState.activeHubUrl,
+        state = opening,
+        enabled = !onPairing,
+        pairedHubs = registryState.hubs,
+        onRetry = graph::retryHubConnection,
+        onSwitchHub = { hub -> openingScope.launch { graph.hubRegistry.setActiveHub(hub) } },
+        onPairAnother = { navController.navigate(Routes.PAIRING) },
+    ) {
+        NavHost(navController = navController, startDestination = startDestination) {
+            composable(Routes.HOME) {
+                val activeHubUrl = registryState.activeHubUrl ?: return@composable
+                val hubGraph = activeHubGraph ?: return@composable
+                val scope = rememberCoroutineScope()
+                val holder = viewModel<SessionListViewModelHolder>(
+                    key = "sessions",
+                    factory = viewModelFactory { SessionListViewModelHolder() },
+                )
+                HomeScreen(
+                    viewModel = holder.forHub(hubGraph),
+                    activeHubUrl = activeHubUrl,
+                    pairedHubs = registryState.hubs,
+                    onSwitchHub = { hub -> scope.launch { graph.hubRegistry.setActiveHub(hub) } },
+                    onPairAnotherHub = { navController.navigate(Routes.PAIRING) },
+                    onSignOut = { scope.launch { graph.signOut(activeHubUrl) } },
+                    onOpenSession = { sessionId -> navController.navigate(Routes.chat(sessionId)) },
+                    onNewSession = { navController.navigate(Routes.newSession()) },
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                )
+            }
 
-        composable(Routes.SETTINGS) {
-            val hubGraph = activeHubGraph ?: return@composable
-            val holder = viewModel<SettingsViewModelHolder>(
-                key = "settings:${hubGraph.hubUrl}",
-                factory = viewModelFactory { SettingsViewModelHolder(graph, hubGraph) },
-            )
-            SettingsScreen(
-                viewModel = holder.viewModel,
-                onOpenVoice = { navController.navigate(Routes.SETTINGS_VOICE) },
-                onOpenMachines = { navController.navigate(Routes.SETTINGS_MACHINES) },
-                onOpenUsage = { navController.navigate(Routes.SETTINGS_USAGE) },
-                onOpenStorage = { navController.navigate(Routes.SETTINGS_STORAGE) },
-                onBack = { navController.popBackStack() },
-            )
-        }
+            composable(Routes.SETTINGS) {
+                val hubGraph = activeHubGraph ?: return@composable
+                val holder = viewModel<SettingsViewModelHolder>(
+                    key = "settings:${hubGraph.hubUrl}",
+                    factory = viewModelFactory { SettingsViewModelHolder(graph, hubGraph) },
+                )
+                SettingsScreen(
+                    viewModel = holder.viewModel,
+                    onOpenVoice = { navController.navigate(Routes.SETTINGS_VOICE) },
+                    onOpenMachines = { navController.navigate(Routes.SETTINGS_MACHINES) },
+                    onOpenUsage = { navController.navigate(Routes.SETTINGS_USAGE) },
+                    onOpenStorage = { navController.navigate(Routes.SETTINGS_STORAGE) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
 
-        composable(Routes.SETTINGS_VOICE) {
-            val hubGraph = activeHubGraph ?: return@composable
-            val holder = viewModel<VoiceSettingsHolder>(key = "voice:${hubGraph.hubUrl}", factory = viewModelFactory { VoiceSettingsHolder(hubGraph) })
-            app.hapi.companion.feature.settings.voice.VoiceSettingsScreen(holder.model) { navController.popBackStack() }
-        }
-        composable(Routes.SETTINGS_MACHINES) {
-            val hubGraph = activeHubGraph ?: return@composable
-            val holder = viewModel<MachinesSettingsHolder>(key = "machines:${hubGraph.hubUrl}", factory = viewModelFactory { MachinesSettingsHolder(hubGraph) })
-            app.hapi.companion.feature.settings.MachinesSettingsScreen(holder.model) { navController.popBackStack() }
-        }
+            composable(Routes.SETTINGS_VOICE) {
+                val hubGraph = activeHubGraph ?: return@composable
+                val holder = viewModel<VoiceSettingsHolder>(key = "voice:${hubGraph.hubUrl}", factory = viewModelFactory { VoiceSettingsHolder(hubGraph) })
+                app.hapi.companion.feature.settings.voice.VoiceSettingsScreen(holder.model) { navController.popBackStack() }
+            }
+            composable(Routes.SETTINGS_MACHINES) {
+                val hubGraph = activeHubGraph ?: return@composable
+                val holder = viewModel<MachinesSettingsHolder>(key = "machines:${hubGraph.hubUrl}", factory = viewModelFactory { MachinesSettingsHolder(hubGraph) })
+                app.hapi.companion.feature.settings.MachinesSettingsScreen(holder.model) { navController.popBackStack() }
+            }
 
-        composable(Routes.SETTINGS_USAGE) {
-            val hubGraph = activeHubGraph ?: return@composable
-            val holder = viewModel<UsageViewModelHolder>(
-                key = "settingsUsage:${hubGraph.hubUrl}",
-                factory = viewModelFactory { UsageViewModelHolder(hubGraph) },
-            )
-            UsageScreen(
-                viewModel = holder.viewModel,
-                onBack = { navController.popBackStack() },
-            )
-        }
+            composable(Routes.SETTINGS_USAGE) {
+                val hubGraph = activeHubGraph ?: return@composable
+                val holder = viewModel<UsageViewModelHolder>(
+                    key = "settingsUsage:${hubGraph.hubUrl}",
+                    factory = viewModelFactory { UsageViewModelHolder(hubGraph) },
+                )
+                UsageScreen(
+                    viewModel = holder.viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
 
-        composable(Routes.SETTINGS_STORAGE) {
-            val hubGraph = activeHubGraph ?: return@composable
-            val holder = viewModel<StorageViewModelHolder>(
-                key = "settingsStorage:${hubGraph.hubUrl}",
-                factory = viewModelFactory { StorageViewModelHolder(hubGraph) },
-            )
-            StorageScreen(
-                viewModel = holder.viewModel,
-                onBack = { navController.popBackStack() },
-            )
-        }
+            composable(Routes.SETTINGS_STORAGE) {
+                val hubGraph = activeHubGraph ?: return@composable
+                val holder = viewModel<StorageViewModelHolder>(
+                    key = "settingsStorage:${hubGraph.hubUrl}",
+                    factory = viewModelFactory { StorageViewModelHolder(hubGraph) },
+                )
+                StorageScreen(
+                    viewModel = holder.viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
 
-        composable(
-            route = Routes.CHAT,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
-            val hubGraph = activeHubGraph ?: return@composable
-            val appContext = LocalContext.current.applicationContext
+            composable(
+                route = Routes.CHAT,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
+            ) { entry ->
+                val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
+                val hubGraph = activeHubGraph ?: return@composable
+                val appContext = LocalContext.current.applicationContext
 
-            // Feed the FCM suppress-when-open rule: while this chat is on
-            // screen, its session's pushes stay silent (SSE already shows
-            // them). The guard on dispose handles enter-before-exit ordering
-            // during supersede navigation (chat B composes before A leaves).
-            DisposableEffect(sessionId) {
-                graph.openChatSessionId.value = sessionId
-                onDispose {
-                    if (graph.openChatSessionId.value == sessionId) {
-                        graph.openChatSessionId.value = null
+                // Feed the FCM suppress-when-open rule: while this chat is on
+                // screen, its session's pushes stay silent (SSE already shows
+                // them). The guard on dispose handles enter-before-exit ordering
+                // during supersede navigation (chat B composes before A leaves).
+                DisposableEffect(sessionId) {
+                    graph.openChatSessionId.value = sessionId
+                    onDispose {
+                        if (graph.openChatSessionId.value == sessionId) {
+                            graph.openChatSessionId.value = null
+                        }
                     }
                 }
-            }
-            val holder = viewModel<ChatViewModelHolder>(
-                key = "chat:${hubGraph.hubUrl}:$sessionId",
-                factory = viewModelFactory { ChatViewModelHolder(hubGraph, sessionId, appContext) },
-            )
-            ChatHost(
-                viewModel = holder.viewModel,
-                media = remember(hubGraph, sessionId) {
-                    ChatMedia(hubGraph.imageLoader) { imageId ->
-                        hubGraph.generatedImageUrl(sessionId, imageId)
-                    }
-                },
-                onBack = { navController.popBackStack() },
-                onNavigateToSession = { supersededId ->
-                    // Resume/reopen handed the conversation to a different id:
-                    // replace this chat entry with the superseding session.
-                    navController.navigate(Routes.chat(supersededId)) {
-                        popUpTo(Routes.CHAT) { inclusive = true }
-                    }
-                },
-                onForkedSession = { childId ->
-                    // All chats share a destination id: singleTop would replace the source arguments.
-                    navController.navigate(Routes.chat(childId))
-                },
-                dictation = holder.dictation,
-                pickers = holder.pickers,
-                onOpenFiles = { navController.navigate(Routes.files(sessionId)) },
-                onOpenFile = { path, line ->
-                    // Chat citations open full mode; the cited line renders as
-                    // a hint chip (no per-line highlight — B-M4c trade-off).
-                    navController.navigate(Routes.fileViewer(sessionId, path, mode = "file", line = line))
-                },
-                onOpenScratchlist = { navController.navigate(Routes.scratchlist(sessionId)) },
-            )
-        }
-
-        composable(
-            route = Routes.FILES,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
-            val hubGraph = activeHubGraph ?: return@composable
-            val filesContext = LocalContext.current
-            val holder = viewModel<FilesViewModelHolder>(
-                key = "files:${hubGraph.hubUrl}:$sessionId",
-                factory = viewModelFactory {
-                    FilesViewModelHolder(hubGraph, sessionId, filesStrings(filesContext))
-                },
-            )
-            FilesScreen(
-                viewModel = holder.viewModel,
-                onBack = { navController.popBackStack() },
-                onOpenFile = { path, staged ->
-                    navController.navigate(Routes.fileViewer(sessionId, path, staged = staged))
-                },
-            )
-        }
-
-        composable(
-            route = Routes.FILE_VIEWER,
-            arguments = listOf(
-                navArgument("sessionId") { type = NavType.StringType },
-                navArgument("path") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("staged") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("mode") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("line") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-            ),
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
-            val hubGraph = activeHubGraph ?: return@composable
-            val encodedPath = entry.arguments?.getString("path") ?: return@composable
-            val path = Routes.decodeFilePath(encodedPath) ?: return@composable
-            val staged = entry.arguments?.getString("staged")?.toBooleanStrictOrNull()
-            val mode = when (entry.arguments?.getString("mode")) {
-                "diff" -> ViewerMode.DIFF
-                "file" -> ViewerMode.FILE
-                else -> null
-            }
-            val line = entry.arguments?.getString("line")?.toIntOrNull()
-            val viewerContext = LocalContext.current
-            val holder = viewModel<FileViewerViewModelHolder>(
-                key = "file:${hubGraph.hubUrl}:$sessionId:$encodedPath:$staged:$mode",
-                factory = viewModelFactory {
-                    FileViewerViewModelHolder(
-                        hubGraph, sessionId, path, staged, mode, line,
-                        fileViewerStrings(viewerContext),
-                    )
-                },
-            )
-            FileViewerScreen(
-                viewModel = holder.viewModel,
-                onBack = { navController.popBackStack() },
-                onOpenFile = { target, focus ->
-                    navController.navigate(Routes.fileViewer(sessionId, target, mode = "file", line = focus))
-                },
-            )
-        }
-
-        composable(
-            route = Routes.SCRATCHLIST,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
-            val hubGraph = activeHubGraph ?: return@composable
-            val appContext = LocalContext.current.applicationContext
-            val holder = viewModel<ScratchlistViewModelHolder>(
-                key = "scratchlist:${hubGraph.hubUrl}:$sessionId",
-                factory = viewModelFactory { ScratchlistViewModelHolder(hubGraph, sessionId, appContext) },
-            )
-            // "Send to composer" reuses the chat ViewModel of the entry below
-            // this route (same holder key + the chat entry as owner), so the
-            // inserted text lands in the live composer state, not a stale
-            // draft. Guarded: without a chat below, the affordance hides.
-            val chatEntry = remember(entry) {
-                runCatching { navController.getBackStackEntry(Routes.CHAT) }.getOrNull()
-            }
-            val chatHolder = chatEntry?.let { owner ->
-                viewModel<ChatViewModelHolder>(
-                    viewModelStoreOwner = owner,
+                val holder = viewModel<ChatViewModelHolder>(
                     key = "chat:${hubGraph.hubUrl}:$sessionId",
                     factory = viewModelFactory { ChatViewModelHolder(hubGraph, sessionId, appContext) },
                 )
+                ChatHost(
+                    viewModel = holder.viewModel,
+                    media = remember(hubGraph, sessionId) {
+                        ChatMedia(hubGraph.imageLoader) { imageId ->
+                            hubGraph.generatedImageUrl(sessionId, imageId)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                    onNavigateToSession = { supersededId ->
+                        // Resume/reopen handed the conversation to a different id:
+                        // replace this chat entry with the superseding session.
+                        navController.navigate(Routes.chat(supersededId)) {
+                            popUpTo(Routes.CHAT) { inclusive = true }
+                        }
+                    },
+                    onForkedSession = { childId ->
+                        // All chats share a destination id: singleTop would replace the source arguments.
+                        navController.navigate(Routes.chat(childId))
+                    },
+                    dictation = holder.dictation,
+                    pickers = holder.pickers,
+                    onOpenFiles = { navController.navigate(Routes.files(sessionId)) },
+                    onOpenFile = { path, line ->
+                        // Chat citations open full mode; the cited line renders as
+                        // a hint chip (no per-line highlight — B-M4c trade-off).
+                        navController.navigate(Routes.fileViewer(sessionId, path, mode = "file", line = line))
+                    },
+                    onOpenScratchlist = { navController.navigate(Routes.scratchlist(sessionId)) },
+                )
             }
-            ScratchlistScreen(
-                viewModel = holder.viewModel,
-                media = remember(hubGraph, sessionId) {
-                    ScratchlistMedia(hubGraph.imageLoader) { attachmentId ->
-                        hubGraph.scratchlistAttachmentUrl(sessionId, attachmentId)
-                    }
-                },
-                onBack = { navController.popBackStack() },
-                onSendToComposer = chatHolder?.let { chat ->
-                    { scratchEntry ->
-                        chat.viewModel.insertComposerText(scratchEntry.text)
-                        navController.popBackStack()
-                    }
-                },
-            )
-        }
 
-        composable(
-            route = Routes.NEW_SESSION,
-            arguments = listOf(
-                navArgument("machineId") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-            ),
-        ) { entry ->
-            val hubGraph = activeHubGraph ?: return@composable
-            val machineId = entry.arguments?.getString("machineId")
-            val formContext = LocalContext.current
-            val holder = viewModel<NewSessionViewModelHolder>(
-                key = "newSession:${hubGraph.hubUrl}",
-                factory = viewModelFactory {
-                    NewSessionViewModelHolder(
-                        hubGraph, graph.newSessionPrefs, machineId,
-                        newSessionStrings(formContext),
-                    )
-                },
-            )
-            NewSessionScreen(
-                viewModel = holder.viewModel,
-                onBack = { navController.popBackStack() },
-                onCreated = { sessionId ->
-                    // Navigate-replace: the form pops so back from the new
-                    // chat lands on the session list, not a stale form.
-                    navController.navigate(Routes.chat(sessionId)) {
-                        popUpTo(Routes.HOME)
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
+            composable(
+                route = Routes.FILES,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
+            ) { entry ->
+                val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
+                val hubGraph = activeHubGraph ?: return@composable
+                val filesContext = LocalContext.current
+                val holder = viewModel<FilesViewModelHolder>(
+                    key = "files:${hubGraph.hubUrl}:$sessionId",
+                    factory = viewModelFactory {
+                        FilesViewModelHolder(hubGraph, sessionId, filesStrings(filesContext))
+                    },
+                )
+                FilesScreen(
+                    viewModel = holder.viewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpenFile = { path, staged ->
+                        navController.navigate(Routes.fileViewer(sessionId, path, staged = staged))
+                    },
+                )
+            }
 
-        navigation(startDestination = Routes.PAIRING_LANDING, route = Routes.PAIRING) {
-            composable(Routes.PAIRING_LANDING) { entry ->
-                val viewModel = pairingViewModel(navController, entry)
-                val state by viewModel.state.collectAsState()
-                val prefill by viewModel.prefill.collectAsState()
-                val notice by graph.pairingNotice.collectAsState()
-
-                // Consume the deep link into the shared pairing ViewModel.
-                LaunchedEffect(pendingBind) {
-                    pendingBind?.let { link ->
-                        viewModel.prefillFromLink(link)
-                        graph.pendingBindLink.value = null
-                    }
+            composable(
+                route = Routes.FILE_VIEWER,
+                arguments = listOf(
+                    navArgument("sessionId") { type = NavType.StringType },
+                    navArgument("path") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("staged") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("mode") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("line") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
+                val hubGraph = activeHubGraph ?: return@composable
+                val encodedPath = entry.arguments?.getString("path") ?: return@composable
+                val path = Routes.decodeFilePath(encodedPath) ?: return@composable
+                val staged = entry.arguments?.getString("staged")?.toBooleanStrictOrNull()
+                val mode = when (entry.arguments?.getString("mode")) {
+                    "diff" -> ViewerMode.DIFF
+                    "file" -> ViewerMode.FILE
+                    else -> null
                 }
-                NavigateHomeOnSuccess(navController, state)
-
-                PairingScreen(
-                    state = state,
-                    prefill = prefill,
-                    notice = notice,
-                    onDismissNotice = { graph.pairingNotice.value = null },
-                    onScanQr = { navController.navigate(Routes.PAIRING_SCAN) },
-                    onManualEntry = { navController.navigate(Routes.PAIRING_MANUAL) },
-                    onPairPrefill = viewModel::pairFromPrefill,
-                    onSwitchToPrefilledHub = viewModel::switchToPrefilledHub,
-                    onDismissPrefill = viewModel::dismissPrefill,
-                    onDismissError = viewModel::dismissError,
+                val line = entry.arguments?.getString("line")?.toIntOrNull()
+                val viewerContext = LocalContext.current
+                val holder = viewModel<FileViewerViewModelHolder>(
+                    key = "file:${hubGraph.hubUrl}:$sessionId:$encodedPath:$staged:$mode",
+                    factory = viewModelFactory {
+                        FileViewerViewModelHolder(
+                            hubGraph, sessionId, path, staged, mode, line,
+                            fileViewerStrings(viewerContext),
+                        )
+                    },
+                )
+                FileViewerScreen(
+                    viewModel = holder.viewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpenFile = { target, focus ->
+                        navController.navigate(Routes.fileViewer(sessionId, target, mode = "file", line = focus))
+                    },
                 )
             }
 
-            composable(Routes.PAIRING_SCAN) { entry ->
-                val viewModel = pairingViewModel(navController, entry)
-                val state by viewModel.state.collectAsState()
-                NavigateHomeOnSuccess(navController, state)
-
-                QrScanScreen(
-                    state = state,
-                    onPairLink = { link -> viewModel.pair(link.hubUrl, link.accessToken) },
-                    onManualEntry = { navController.navigate(Routes.PAIRING_MANUAL) },
+            composable(
+                route = Routes.SCRATCHLIST,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
+            ) { entry ->
+                val sessionId = entry.arguments?.getString("sessionId") ?: return@composable
+                val hubGraph = activeHubGraph ?: return@composable
+                val appContext = LocalContext.current.applicationContext
+                val holder = viewModel<ScratchlistViewModelHolder>(
+                    key = "scratchlist:${hubGraph.hubUrl}:$sessionId",
+                    factory = viewModelFactory { ScratchlistViewModelHolder(hubGraph, sessionId, appContext) },
+                )
+                // "Send to composer" reuses the chat ViewModel of the entry below
+                // this route (same holder key + the chat entry as owner), so the
+                // inserted text lands in the live composer state, not a stale
+                // draft. Guarded: without a chat below, the affordance hides.
+                val chatEntry = remember(entry) {
+                    runCatching { navController.getBackStackEntry(Routes.CHAT) }.getOrNull()
+                }
+                val chatHolder = chatEntry?.let { owner ->
+                    viewModel<ChatViewModelHolder>(
+                        viewModelStoreOwner = owner,
+                        key = "chat:${hubGraph.hubUrl}:$sessionId",
+                        factory = viewModelFactory { ChatViewModelHolder(hubGraph, sessionId, appContext) },
+                    )
+                }
+                ScratchlistScreen(
+                    viewModel = holder.viewModel,
+                    media = remember(hubGraph, sessionId) {
+                        ScratchlistMedia(hubGraph.imageLoader) { attachmentId ->
+                            hubGraph.scratchlistAttachmentUrl(sessionId, attachmentId)
+                        }
+                    },
                     onBack = { navController.popBackStack() },
-                    onDismissError = viewModel::dismissError,
+                    onSendToComposer = chatHolder?.let { chat ->
+                        { scratchEntry ->
+                            chat.viewModel.insertComposerText(scratchEntry.text)
+                            navController.popBackStack()
+                        }
+                    },
                 )
             }
 
-            composable(Routes.PAIRING_MANUAL) { entry ->
-                val viewModel = pairingViewModel(navController, entry)
-                val state by viewModel.state.collectAsState()
-                NavigateHomeOnSuccess(navController, state)
-
-                ManualEntryScreen(
-                    state = state,
-                    onPair = viewModel::pair,
-                    onBack = { navController.popBackStack() },
-                    onDismissError = viewModel::dismissError,
+            composable(
+                route = Routes.NEW_SESSION,
+                arguments = listOf(
+                    navArgument("machineId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                val hubGraph = activeHubGraph ?: return@composable
+                val machineId = entry.arguments?.getString("machineId")
+                val formContext = LocalContext.current
+                val holder = viewModel<NewSessionViewModelHolder>(
+                    key = "newSession:${hubGraph.hubUrl}",
+                    factory = viewModelFactory {
+                        NewSessionViewModelHolder(
+                            hubGraph, graph.newSessionPrefs, machineId,
+                            newSessionStrings(formContext),
+                        )
+                    },
                 )
+                NewSessionScreen(
+                    viewModel = holder.viewModel,
+                    onBack = { navController.popBackStack() },
+                    onCreated = { sessionId ->
+                        // Navigate-replace: the form pops so back from the new
+                        // chat lands on the session list, not a stale form.
+                        navController.navigate(Routes.chat(sessionId)) {
+                            popUpTo(Routes.HOME)
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+
+            navigation(startDestination = Routes.PAIRING_LANDING, route = Routes.PAIRING) {
+                composable(Routes.PAIRING_LANDING) { entry ->
+                    val viewModel = pairingViewModel(navController, entry)
+                    val state by viewModel.state.collectAsState()
+                    val prefill by viewModel.prefill.collectAsState()
+                    val notice by graph.pairingNotice.collectAsState()
+
+                    // Consume the deep link into the shared pairing ViewModel.
+                    LaunchedEffect(pendingBind) {
+                        pendingBind?.let { link ->
+                            viewModel.prefillFromLink(link)
+                            graph.pendingBindLink.value = null
+                        }
+                    }
+                    NavigateHomeOnSuccess(navController, state)
+
+                    PairingScreen(
+                        state = state,
+                        prefill = prefill,
+                        notice = notice,
+                        onDismissNotice = { graph.pairingNotice.value = null },
+                        onScanQr = { navController.navigate(Routes.PAIRING_SCAN) },
+                        onManualEntry = { navController.navigate(Routes.PAIRING_MANUAL) },
+                        onPairPrefill = viewModel::pairFromPrefill,
+                        onSwitchToPrefilledHub = viewModel::switchToPrefilledHub,
+                        onDismissPrefill = viewModel::dismissPrefill,
+                        onDismissError = viewModel::dismissError,
+                    )
+                }
+
+                composable(Routes.PAIRING_SCAN) { entry ->
+                    val viewModel = pairingViewModel(navController, entry)
+                    val state by viewModel.state.collectAsState()
+                    NavigateHomeOnSuccess(navController, state)
+
+                    QrScanScreen(
+                        state = state,
+                        onPairLink = { link -> viewModel.pair(link.hubUrl, link.accessToken) },
+                        onManualEntry = { navController.navigate(Routes.PAIRING_MANUAL) },
+                        onBack = { navController.popBackStack() },
+                        onDismissError = viewModel::dismissError,
+                    )
+                }
+
+                composable(Routes.PAIRING_MANUAL) { entry ->
+                    val viewModel = pairingViewModel(navController, entry)
+                    val state by viewModel.state.collectAsState()
+                    NavigateHomeOnSuccess(navController, state)
+
+                    ManualEntryScreen(
+                        state = state,
+                        onPair = viewModel::pair,
+                        onBack = { navController.popBackStack() },
+                        onDismissError = viewModel::dismissError,
+                    )
+                }
             }
         }
     }

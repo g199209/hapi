@@ -626,4 +626,7 @@
     <string name="mermaid_fullscreen">Открыть диаграмму на весь экран</string>
     <string name="mermaid_close">Закрыть диаграмму</string>
     <string name="mermaid_error">Не удалось отобразить диаграмму</string>
+    <string name="hub_opening_connecting">Подключение к HAPI…</string>
+    <string name="hub_opening_failed">Не удалось подключиться к HAPI</string>
+    <string name="hub_opening_failed_hint">Проверьте подключение к сети и убедитесь, что сервер работает, затем повторите попытку.</string>
 </resources>

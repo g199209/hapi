@@ -10,6 +10,13 @@ golden fixtures (`shared/fixtures/`).
 
 ## Current capabilities
 
+Opening the app checks the active Hub's live `/health` endpoint with an eight
+second deadline. Cold startup creates session/cache stores only after a healthy,
+compatible response. Checking and failure screens hide protected content,
+including restored chats; failure offers Retry, Switch hub and Pair another hub.
+Returning from the background checks again while preserving the loaded graph,
+drafts and navigation. Rotation keeps the current check/result.
+
 The app provides sessions/chat, approvals and questions, new sessions,
 attachments, files/Git, Scratchlist, standard dictation, usage/storage,
 settings and encrypted-relay or direct-FCM notifications. Model and permission

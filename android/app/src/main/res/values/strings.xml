@@ -626,4 +626,7 @@
     <string name="mermaid_fullscreen">Open diagram full screen</string>
     <string name="mermaid_close">Close diagram</string>
     <string name="mermaid_error">Could not render diagram</string>
+    <string name="hub_opening_connecting">Connecting to HAPI…</string>
+    <string name="hub_opening_failed">Cannot connect to HAPI</string>
+    <string name="hub_opening_failed_hint">Check your network and that the server is running, then try again.</string>
 </resources>

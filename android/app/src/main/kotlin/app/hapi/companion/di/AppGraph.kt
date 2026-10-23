@@ -49,6 +49,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import okhttp3.ConnectionPool
 
 /** One terminal auth failure, re-emitted off OkHttp threads as a flow. */
 data class AuthTerminal(
@@ -158,6 +159,12 @@ class AppGraph(context: Context) {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
+    // Each opening check verifies the current route with a fresh connection.
+    // Keep no idle sockets across Wi-Fi/VPN foreground transitions.
+    private val openingHttpClient = pairingHttpClient.newBuilder()
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+        .build()
+
     /** Builds the pairing probe for a candidate hub URL (normalized upstream). */
     val pairingClientFactory: PairingClientFactory = PairingClientFactory { hubUrl ->
         val api = HapiApi(hubUrl = hubUrl, client = pairingHttpClient)
@@ -209,10 +216,19 @@ class AppGraph(context: Context) {
 
     // --------------------------------------------------------------------------
 
-    private val mutableActiveHubGraph = MutableStateFlow<HubGraph?>(null)
+    private val openingGate = HubOpeningGate(
+        scope = scope,
+        probe = { hub -> HapiApi(hubUrl = hub, client = openingHttpClient).health() },
+        create = { hub -> HubGraph(hub, credentialStore, authEvents, appContext) },
+        close = HubGraph::close,
+        setGraphForeground = HubGraph::setLifecycleForeground,
+    )
 
-    /** Per-active-hub graph; null while unpaired. Recreated on hub switch. */
-    val activeHubGraph: StateFlow<HubGraph?> = mutableActiveHubGraph.asStateFlow()
+    /** Null until a successful opening check. Foreground rechecks retain the
+     * loaded graph; changing the active hub replaces it. */
+    val activeHubGraph: StateFlow<HubGraph?> = openingGate.graph
+    val hubOpeningState: StateFlow<HubOpeningState> = openingGate.state
+    fun retryHubConnection() = openingGate.retry()
 
     private val mutableReady = MutableStateFlow(false)
 
@@ -230,7 +246,7 @@ class AppGraph(context: Context) {
             hubRegistry.state
                 .map { it.activeHubUrl }
                 .distinctUntilChanged()
-                .collect { activeHubUrl -> swapActiveHub(activeHubUrl) }
+                .collect { activeHubUrl -> openingGate.selectHub(activeHubUrl) }
         }
     }
 
@@ -247,26 +263,11 @@ class AppGraph(context: Context) {
         hubRegistry.removeHub(hubUrl)
     }
 
-    /** Sequential by construction: only the [start] collector calls this. */
-    private fun swapActiveHub(activeHubUrl: String?) {
-        mutableActiveHubGraph.value?.close()
-        mutableActiveHubGraph.value = activeHubUrl?.let { hubUrl ->
-            HubGraph(
-                hubUrl = hubUrl,
-                credentialStore = credentialStore,
-                authEvents = authEvents,
-                context = appContext,
-            ).also { graph ->
-                // A hub activated while backgrounded must not burn retries.
-                if (!isForeground) graph.setLifecycleForeground(false)
-            }
-        }
-    }
+    @Volatile private var isForeground = false
 
-    @Volatile private var isForeground = true
-
-    /** Current process foreground state (FCM suppress-when-open check). */
-    val foreground: Boolean get() = isForeground
+    /** Push suppression requires a visible Hub screen, including after resume. */
+    val foreground: Boolean get() = isForeground &&
+        hubRegistry.activeHubUrl?.let { openingGate.state.value.allows(it) } == true
 
     /**
      * Process lifecycle input (`ProcessLifecycleOwner` via `HapiApp`):
@@ -275,7 +276,7 @@ class AppGraph(context: Context) {
      */
     fun setForeground(foreground: Boolean) {
         isForeground = foreground
-        mutableActiveHubGraph.value?.setLifecycleForeground(foreground)
+        openingGate.setForeground(foreground)
     }
 
     private companion object {
