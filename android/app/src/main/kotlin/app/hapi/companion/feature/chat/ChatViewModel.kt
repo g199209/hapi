@@ -664,7 +664,8 @@ class ChatViewModel(
                     if (epoch != null) {
                         if (lastHistoryEpoch != null && lastHistoryEpoch != epoch) {
                             cancelHistory()
-                            mutableJumpToken.value += 1
+                            // Epochs invalidate cursors, not the reader's scroll intent.
+                            // History-mode recovery revalidates the retained range in place.
                         }
                         lastHistoryEpoch = epoch
                     }

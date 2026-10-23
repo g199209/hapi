@@ -133,6 +133,161 @@ class MessageWindowStoreTest {
 
     // ------------------------------------------------------------ tail sync --
 
+    private fun historyState(rows: List<DecryptedMessage>) = MessageWindowState(
+        "history", messages = rows.map { it.asWindowMessage() }, viewMode = MessageViewMode.History,
+        epoch = 1, hasMore = true, historyVersion = 7, messagesVersion = 12,
+        oldestPosition = rows.first().let { MessagePosition(it.positionAt, it.seq!!) },
+        newestPosition = rows.last().let { MessagePosition(it.positionAt, it.seq!!) },
+    )
+
+    private fun beforePage(rows: List<DecryptedMessage>, epoch: Long, hasMore: Boolean = true) =
+        latestPage(rows, epoch, hasMore = hasMore).let { it.copy(page = it.page.copy(direction = "before")) }
+
+    @Test fun `invalidation revalidates the reading range without clearing it or loading latest`() = runTest {
+        val api = GatedMessagesApi()
+        val initial = historyState((100L..399L).map { agentRow("a-$it", it, it * 1000) })
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = initial)
+        store.onMessageEvent(app.hapi.protocol.wire.SyncEvent.MessagesInvalidated(sessionId = "history"))
+        runCurrent()
+        assertEquals(initial.messages, store.state.value.messages)
+        assertNull(store.state.value.epoch)
+        assertTrue(store.state.value.isSyncingTail)
+        assertEquals(listOf<MessagesQuery>(MessagesQuery.Before(399000, 400, 200)), api.requests)
+        // A backdated tool result is inserted; an obsolete row disappears.
+        api.release(beforePage((200L..399L).filter { it != 250L }.map { agentRow("a-$it", it, it * 1000) } +
+            agentRow("late-result", 900, 250001), 2))
+        runCurrent()
+        assertEquals(initial.messages, store.state.value.messages) // No partial-page replacement.
+        api.release(beforePage((1L..199L).map { agentRow("a-$it", it, it * 1000) }, 2))
+        runCurrent()
+        val state = store.state.value
+        assertEquals(2, api.requests.size)
+        assertTrue(api.requests.all { it is MessagesQuery.Before })
+        assertEquals(300, state.messages.size)
+        assertEquals("a-100", state.messages.first().id)
+        assertEquals("a-399", state.messages.last().id)
+        assertTrue(state.messages.first() === initial.messages.first())
+        assertTrue(state.messages.last() === initial.messages.last())
+        assertTrue(state.messages.any { it.id == "late-result" })
+        assertTrue(state.messages.none { it.id == "a-250" })
+        assertEquals(2L, state.epoch)
+        assertEquals(MessageViewMode.History, state.viewMode)
+        assertEquals(8L, state.historyVersion)
+        assertTrue(state.messagesVersion > initial.messagesVersion)
+        assertTrue(state.requiresLatestReset)
+        assertEquals(false, state.isSyncingTail)
+    }
+
+    @Test fun `history refresh failure retains rows and retry revalidates instead of jumping`() = runTest {
+        var fail = true
+        val rows = (100L..110L).map { agentRow("a-$it", it, it * 1000) }
+        val api = object : MessagesApi {
+            override suspend fun getMessages(sessionId: String, query: MessagesQuery): MessagesResponse {
+                assertTrue(query is MessagesQuery.Before)
+                if (fail) error("offline")
+                return beforePage(rows, 2)
+            }
+            override suspend fun getQueuedState(sessionId: String, localIds: List<String>) = QueuedStateResponse(emptyList(), emptyList())
+        }
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = historyState(rows))
+        store.onMessageEvent(app.hapi.protocol.wire.SyncEvent.MessagesInvalidated(sessionId = "history"))
+        runCurrent()
+        assertEquals(rows.map { it.id }, store.state.value.messages.map { it.id })
+        assertEquals("offline", store.state.value.warning)
+        assertTrue(store.fetchOlder() is OlderLoadOutcome.Failed)
+        assertNull(store.state.value.epoch)
+        fail = false
+        store.syncTail()
+        assertEquals(2L, store.state.value.epoch)
+        assertNull(store.state.value.warning)
+    }
+
+    @Test fun `a second invalidation rejects every page of the superseded history refresh`() = runTest {
+        val rows = listOf(agentRow("kept", 100, 100000), agentRow("removed", 101, 101000))
+        val responses = List(2) { kotlinx.coroutines.CompletableDeferred<MessagesResponse>() }
+        var requests = 0
+        val api = object : MessagesApi {
+            override suspend fun getMessages(sessionId: String, query: MessagesQuery) = responses[requests++].await()
+            override suspend fun getQueuedState(sessionId: String, localIds: List<String>) = QueuedStateResponse(emptyList(), emptyList())
+        }
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = historyState(rows))
+        repeat(2) {
+            store.onMessageEvent(app.hapi.protocol.wire.SyncEvent.MessagesInvalidated(sessionId = "history"))
+            runCurrent()
+        }
+        responses[1].complete(beforePage(rows.take(1), 3))
+        runCurrent()
+        responses[0].complete(beforePage(rows, 2))
+        runCurrent()
+        assertEquals(listOf("kept"), store.state.value.messages.map { it.id })
+        assertEquals(3L, store.state.value.epoch)
+    }
+
+    @Test fun `history refresh refuses mixed epochs and keeps the reading snapshot`() = runTest {
+        val api = GatedMessagesApi()
+        val initial = historyState((100L..399L).map { agentRow("a-$it", it, it * 1000) })
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = initial)
+        store.onMessageEvent(app.hapi.protocol.wire.SyncEvent.MessagesInvalidated(sessionId = "history"))
+        runCurrent()
+        api.release(beforePage((200L..399L).map { agentRow("a-$it", it, it * 1000) }, 2))
+        runCurrent()
+        api.release(beforePage((100L..199L).map { agentRow("a-$it", it, it * 1000) }, 3))
+        runCurrent()
+        assertEquals(initial.messages, store.state.value.messages)
+        assertNull(store.state.value.epoch)
+        assertEquals(false, store.state.value.isSyncingTail)
+        assertTrue(store.state.value.warning!!.contains("History changed"))
+    }
+
+    @Test fun `replay gap with an epoch reset refreshes history in place`() = runTest {
+        val api = GatedMessagesApi()
+        val rows = listOf(agentRow("reading", 100, 100000), agentRow("reading-next", 101, 101000))
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = historyState(rows))
+        val sync = backgroundScope.launch { store.syncTail() }
+        runCurrent()
+        api.release(latestPage(listOf(agentRow("newest", 999, 999000)), 2, reset = true, hasMore = true))
+        runCurrent()
+        assertEquals(rows.map { it.id }, store.state.value.messages.map { it.id })
+        assertTrue(api.requests.last() is MessagesQuery.Before)
+        api.release(beforePage(rows, 2))
+        sync.join()
+        assertEquals(rows.map { it.id }, store.state.value.messages.map { it.id })
+        assertEquals(2L, store.state.value.epoch)
+    }
+
+    @Test fun `explicit clear prevents a late history refresh from resurrecting rows`() = runTest {
+        val api = GatedMessagesApi()
+        val rows = listOf(agentRow("reading", 100, 100000))
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = historyState(rows))
+        store.onMessageEvent(app.hapi.protocol.wire.SyncEvent.MessagesInvalidated(sessionId = "history"))
+        runCurrent()
+        store.clear()
+        api.release(beforePage(rows, 2))
+        runCurrent()
+        assertTrue(store.state.value.messages.isEmpty())
+        assertNull(store.state.value.epoch)
+    }
+
+    @Test fun `history refresh keeps queued drafts and explicit latest still catches up`() = runTest {
+        val api = GatedMessagesApi()
+        val rows = listOf(agentRow("reading", 100, 100000))
+        val pending = buildOptimisticMessage(localId = "draft", text = "Next input", createdAt = 500000, status = MessageStatus.Sending)
+        val initial = historyState(rows).copy(messages = rows.map { it.asWindowMessage() } + pending)
+        val store = MessageWindowStore("history", api, backgroundScope, initialState = initial)
+        store.onMessageEvent(app.hapi.protocol.wire.SyncEvent.MessagesInvalidated(sessionId = "history"))
+        runCurrent()
+        api.release(beforePage(rows, 2))
+        runCurrent()
+        assertTrue(store.state.value.messages.any { it.id == "draft" && it.status == MessageStatus.Sending })
+        val latest = backgroundScope.launch { store.syncTail(allowingHistoryReset = true) }
+        runCurrent()
+        assertTrue(api.requests.last() is MessagesQuery.Latest)
+        api.release(latestPage(listOf(agentRow("live", 999, 999000)), 2, hasMore = true))
+        latest.join()
+        assertEquals(listOf("draft", "live"), store.state.value.messages.map { it.id })
+        assertEquals(false, store.state.value.requiresLatestReset)
+    }
+
     @Test
     fun `history reset poisons older requests and reloads authoritative epoch without resurrecting removed rows`() = runTest {
         val stale = kotlinx.coroutines.CompletableDeferred<MessagesResponse>()
@@ -227,9 +382,13 @@ class MessageWindowStoreTest {
         assertEquals(listOf("obsolete"), store.state.value.messages.map { it.id })
         assertEquals(false, recovery.isCompleted)
         api.release(latestPage(listOf(agentRow("replacement", 2, 2000)), epoch = 2))
+        runCurrent()
+        assertTrue(api.requests.last() is MessagesQuery.Before)
+        // The old range was deleted; do not replace it with the newer live tail.
+        api.release(beforePage(emptyList(), epoch = 2, hasMore = false))
         recovery.join()
         assertEquals(2L, store.state.value.epoch)
-        assertEquals(listOf("replacement"), store.state.value.messages.map { it.id })
+        assertTrue(store.state.value.messages.isEmpty())
     }
 
     @Test fun `older cursor stall is paused without applying an empty page`() = runTest {

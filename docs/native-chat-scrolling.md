@@ -130,6 +130,15 @@ indices, including equal-size bounded-window replacements.
 Tail-follow intent and the consumed jump token use saved state alongside the
 list position, so navigation return/activity recreation does not replay an
 old jump-to-latest command or report a false tail viewport to the ViewModel.
+Structural SSE invalidation and replay-gap epoch changes also preserve reading
+intent. In history mode the store re-reads the retained position range through
+the existing before API, requiring one epoch across all pages, and publishes
+the authoritative replacement atomically. Deleted rows disappear; the old
+snapshot stays visible while refreshing or offline, with history actions gated
+by the invalid epoch. Superseded responses cannot restore rows. Paging retries
+first revalidate an invalid range. A bounded refresh leaves catch-up pending;
+explicit latest navigation still refreshes the live tail. In tail mode the
+normal latest-page recovery and following behavior remain in place.
 Only the scroll start/end Boolean is read in composition; no per-frame
 `layoutInfo` reads occur there. Tail geometry is
 observed through `snapshotFlow` only while following; corrections are queued

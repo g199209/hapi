@@ -102,6 +102,11 @@ and flow through the shared machine store/SSE into session filters and new sessi
 Native chat scrolling architecture and acceptance checklist:
 [Native transcript scrolling](../docs/native-chat-scrolling.md).
 
+While reading history, live output and structural message invalidations retain
+the visible message and pixel offset. Recovery revalidates that historical range
+in place; an epoch change does not issue a jump-to-latest command. The existing
+latest button and scrolling back to the live bottom resume following.
+
 Requires an Android SDK for `:app`/`:core:data` (set `ANDROID_HOME` or
 `android/local.properties` with `sdk.dir=...`). `:core:protocol` alone needs
 only a JDK.

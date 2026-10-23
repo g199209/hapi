@@ -206,6 +206,11 @@ class MessageWindowStore(
             val initial = _state.value
             val initialCursor = initial.newestPosition
             val preferLatestOnActivation = initial.preferLatestOnActivation
+            if (!allowingHistoryReset && initial.viewMode == MessageViewMode.History &&
+                initial.epoch == null && initial.requiresLatestReset && refreshReadingWindow(initial, generation)) {
+                finishTailSync(generation, warning = null)
+                return
+            }
             val canIncrement = initialCursor != null
                 && initial.epoch != null
                 && !initial.requiresLatestReset
@@ -220,6 +225,12 @@ class MessageWindowStore(
                 }
                 val response = api.getMessages(sessionId, MessagesQuery.Latest(limit = latestPageSize))
                 if (!isCurrentTailSync(generation)) return
+                if (!allowingHistoryReset && initial.viewMode == MessageViewMode.History &&
+                    (response.page.reset || initial.epoch != response.page.epoch) && response.messages.isNotEmpty() &&
+                    refreshReadingWindow(initial, generation)) {
+                    finishTailSync(generation, warning = null)
+                    return
+                }
                 update { previous ->
                     if (previous.syncGeneration != generation) return@update previous
                     // Even truncated history must validate the server epoch:
@@ -260,6 +271,8 @@ class MessageWindowStore(
                 if (!isCurrentTailSync(generation)) return
 
                 if (response.page.reset || response.page.direction == "latest") {
+                    if (!allowingHistoryReset && initial.viewMode == MessageViewMode.History &&
+                        response.messages.isNotEmpty() && refreshReadingWindow(initial, generation)) break
                     update { previous ->
                         if (previous.syncGeneration != generation) return@update previous
                         MessageWindowLogic.applyLatestResponse(
@@ -314,6 +327,26 @@ class MessageWindowStore(
         persist()
     }
 
+    /** Revalidate the retained range atomically, without publishing an empty/latest window. */
+    private suspend fun refreshReadingWindow(initial: MessageWindowState, generation: Long): Boolean {
+        val refreshed = reloadReadingWindow(sessionId, api, initial) { isCurrentTailSync(generation) } ?: return false
+        update { previous ->
+            if (previous.syncGeneration != generation) return@update previous
+            // Explicit latest takes precedence over an in-flight history refresh.
+            if (previous.viewMode != MessageViewMode.History) return@update previous
+            val pending = previous.messages.filter { it.isOptimistic || it.isQueuedForInvocation }
+            MessageWindowLogic.ingestIncoming(refreshed, pending).copy(
+                syncGeneration = previous.syncGeneration,
+                olderGeneration = previous.olderGeneration,
+                isSyncingTail = true,
+                historyVersion = previous.historyVersion + 1,
+                messagesVersion = previous.messagesVersion + 1,
+                tailRevision = previous.tailRevision + 1,
+            )
+        }
+        return true
+    }
+
     // ---------------------------------------------------------- older pages --
 
     /**
@@ -324,6 +357,13 @@ class MessageWindowStore(
      * synchronous updater) — it must not call back into this store.
      */
     suspend fun fetchOlder(onBeforeApply: ((Long) -> Boolean)? = null): OlderLoadOutcome {
+        val reading = _state.value
+        if (reading.viewMode == MessageViewMode.History && reading.requiresLatestReset && reading.epoch == null) {
+            syncTail(ensureAfterCurrent = true)
+            if (_state.value.epoch == null) {
+                return OlderLoadOutcome.Failed(IllegalStateException(_state.value.warning ?: "History refresh failed"))
+            }
+        }
         // Reserve atomically: concurrent consumers must not both pass the
         // precheck before either publishes isLoadingMore.
         val (initial, precheck) = stateMutex.withLock {
@@ -421,8 +461,9 @@ class MessageWindowStore(
 
     /**
      * Route one message-stream SSE event into this window (the
-     * `SyncTargets.onMessageEvent` hook). `messages-invalidated` clears the
-     * window and starts a fresh tail sync; `scheduled-matured` re-syncs so
+     * `SyncTargets.onMessageEvent` hook). `messages-invalidated` revalidates
+     * the reading range in history mode, or reloads the live tail otherwise;
+     * `scheduled-matured` re-syncs so
      * the released row (and its consumption) lands even if the
      * `message-received` frame was missed.
      */
@@ -434,7 +475,20 @@ class MessageWindowStore(
             is SyncEvent.MessagesRequeued -> markRequeued(event.localIds)
             is SyncEvent.MessageCancelled -> removeMessage(event.messageId)
             is SyncEvent.MessagesInvalidated -> {
-                clear()
+                if (_state.value.viewMode == MessageViewMode.History) {
+                    synchronized(controllerLock) {
+                        controllerEpoch += 1
+                        running = null
+                        trailingRequested = false
+                    }
+                    snapshots?.delete(sessionId)
+                    update { previous -> previous.copy(
+                        epoch = null, requiresLatestReset = true, preferLatestOnActivation = false,
+                        isLoadingMore = false, isSyncingTail = false,
+                        syncGeneration = previous.syncGeneration + 1,
+                        olderGeneration = previous.olderGeneration + 1,
+                    ) }
+                } else clear()
                 scope.launch { syncTail() }
             }
             is SyncEvent.ScheduledMatured -> scope.launch { syncTail(ensureAfterCurrent = true) }

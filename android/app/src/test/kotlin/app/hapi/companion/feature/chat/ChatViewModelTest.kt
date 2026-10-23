@@ -343,6 +343,26 @@ private class Harness(
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
+    @Test fun `history epoch revalidation never issues a jump to latest`() = runTest {
+        val h = Harness(this, ScriptedTransport(listOf("ok")))
+        val rows = listOf(agentMessage("reading", 100, 100000, "Reading history"))
+        h.api.tailResponses += MessagesResponse(rows, page("latest", true, nextBeforeAt = 100000, nextBeforeSeq = 100))
+        h.viewModel.start()
+        h.viewModel.uiState.first { it.blocks.isNotEmpty() }
+        runCurrent()
+        h.viewModel.readingViewportChanged(followsTail = false, needsOlder = false)
+        runCurrent()
+        h.api.beforePage = MessagesResponse(rows, page("before", true, nextBeforeAt = 100000, nextBeforeSeq = 100).copy(epoch = 5))
+        val store = h.messageWindows.open(SESSION_ID)
+        store.onMessageEvent(SyncEvent.MessagesInvalidated(sessionId = SESSION_ID))
+        runCurrent()
+        assertEquals(5L, store.state.value.epoch)
+        assertEquals(MessageViewMode.History, store.state.value.viewMode)
+        assertEquals(0L, h.viewModel.jumpToken.value)
+        assertEquals(false, h.viewModel.jumpingLatest.value)
+        h.viewModel.stop()
+    }
+
     @Test fun `annotation-only send captures request once and retry preserves envelope`() = runTest {
         val sent = mutableListOf<SendMessageRequest>()
         var fail = true
