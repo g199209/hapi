@@ -149,6 +149,10 @@ CI (`.github/workflows/android.yml`) runs protocol/data/app unit tests,
 `:app:assembleDebug`, `:app:lintDebug`, and Compose instrumentation on API 29
 and API 36 for PRs touching `android/**` or `shared/fixtures/**`.
 
+For Windows SDK builds and emulator automation from WSL, use the
+[windowless launcher](scripts/windows/README.md). It preserves command output,
+binary ADB transfers and exit codes without opening Windows terminals.
+
 ### Protocol conformance fixtures
 
 `:core:protocol` is the porting target for `web/src/chat/` and is verified
