@@ -30,14 +30,15 @@ sealed interface PreviewImage {
  */
 @Composable
 fun rememberPreviewImage(previewUrl: String?, maxDimension: Int = 512): State<PreviewImage> =
-    produceState<PreviewImage>(initialValue = PreviewImage.Loading, previewUrl) {
+    produceState<PreviewImage>(initialValue = PreviewImage.Loading, previewUrl, maxDimension) {
+        value = PreviewImage.Loading
         if (previewUrl == null) {
             value = PreviewImage.Unavailable
             return@produceState
         }
         value = withContext(Dispatchers.Default) {
             val bytes = AttachmentPolicy.bytesFromDataUrl(previewUrl)
-            val bitmap = bytes?.let { decodeDownsampled(it, maxDimension) }
+            val bitmap = bytes?.let { decodeAttachmentImage(it, maxDimension) }
             if (bitmap != null) PreviewImage.Ready(bitmap) else PreviewImage.Unavailable
         }
     }
@@ -48,10 +49,10 @@ fun rememberPreviewImage(previewUrl: String?, maxDimension: Int = 512): State<Pr
  */
 @Composable
 fun rememberChipThumbnail(previewBytes: ByteArray?): ImageBitmap? = remember(previewBytes) {
-    previewBytes?.let { decodeDownsampled(it, AttachmentPolicy.PREVIEW_MAX_DIMENSION) }
+    previewBytes?.let { decodeAttachmentImage(it, AttachmentPolicy.PREVIEW_MAX_DIMENSION) }
 }
 
-private fun decodeDownsampled(bytes: ByteArray, maxDimension: Int): ImageBitmap? {
+internal fun decodeAttachmentImage(bytes: ByteArray, maxDimension: Int = Int.MAX_VALUE): ImageBitmap? {
     return try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)

@@ -643,4 +643,8 @@
     <string name="image_zoom_in">放大</string>
     <string name="image_zoom_out">缩小</string>
     <string name="image_zoom_level">缩放 %1$d%%</string>
+    <string name="image_open_preview">打开图片</string>
+    <string name="image_close_preview">关闭图片</string>
+    <string name="image_preview_fallback">原图不可用 · 当前显示预览图</string>
+    <string name="image_load_failed">无法加载图片</string>
 </resources>

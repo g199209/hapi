@@ -27,11 +27,12 @@ import coil.ImageLoader
 
 /**
  * Hub-scoped media plumbing for chat blocks: the authed Coil loader plus the
- * generated-image URL builder (both from `HubGraph`). Null loader (previews,
- * tests) degrades to a filename placeholder.
+ * generated-image URL builder, plus the session-scoped file reader for user
+ * image originals. Null loader (previews/tests) shows generated filenames.
  */
 data class ChatMedia(
     val imageLoader: ImageLoader?,
+    val readAttachment: (suspend (path: String) -> app.hapi.protocol.wire.FileReadResponse)? = null,
     val generatedImageUrl: (imageId: String) -> String?,
 )
 

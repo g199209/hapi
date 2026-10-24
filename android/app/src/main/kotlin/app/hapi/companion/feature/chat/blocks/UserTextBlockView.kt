@@ -20,12 +20,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,7 @@ import app.hapi.companion.ui.markdown.Markdown
 import app.hapi.companion.ui.theme.HapiTypography
 import app.hapi.companion.feature.chat.attachments.PreviewImage
 import app.hapi.companion.feature.chat.attachments.rememberPreviewImage
+import app.hapi.companion.feature.chat.attachments.LocalOpenAttachmentImage
 import app.hapi.companion.ui.theme.HapiTheme
 import app.hapi.protocol.chat.ChatAttachment
 import app.hapi.protocol.chat.UserTextBlock
@@ -91,7 +95,9 @@ fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 horizontalAlignment = Alignment.End,
                             ) {
-                                attachments.forEach { AttachmentView(it) }
+                                attachments.forEach { attachment ->
+                                    key(attachment.id, attachment.path) { AttachmentView(attachment) }
+                                }
                             }
                         }
                     }
@@ -126,13 +132,19 @@ fun UserTextBlockView(block: UserTextBlock, modifier: Modifier = Modifier) {
 /**
  * One bubble attachment: image mimes with a decodable `previewUrl` render a
  * thumbnail (web `MessageAttachments` split); everything else — plus decode
- * failures — falls back to the filename chip.
+ * failures — falls back to the filename chip. Both image forms open the
+ * full-screen viewer; ordinary file chips retain their existing behavior.
  */
 @Composable
 private fun AttachmentView(attachment: ChatAttachment) {
     val isImage = attachment.mimeType.startsWith("image/")
+    val openImage = LocalOpenAttachmentImage.current
+    val imageClick = if (isImage && openImage != null) Modifier
+        .testTag("attachment-image-${attachment.id}")
+        .clickable(role = Role.Button, onClickLabel = stringResource(R.string.image_open_preview)) { openImage(attachment) }
+        else Modifier
     if (!isImage || attachment.previewUrl == null) {
-        AttachmentChip(attachment)
+        AttachmentChip(attachment, imageClick)
         return
     }
     val preview by rememberPreviewImage(attachment.previewUrl)
@@ -144,22 +156,25 @@ private fun AttachmentView(attachment: ChatAttachment) {
             alignment = Alignment.CenterEnd,
             modifier = Modifier
                 .heightIn(max = 180.dp)
-                .clip(RoundedCornerShape(10.dp)),
+                .clip(RoundedCornerShape(10.dp))
+                .then(imageClick),
         )
         // Sized placeholder while decoding keeps the bubble from jumping.
         PreviewImage.Loading -> Surface(
+            modifier = imageClick,
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
             shape = RoundedCornerShape(10.dp),
         ) {
             Spacer(modifier = Modifier.size(width = 120.dp, height = 90.dp))
         }
-        PreviewImage.Unavailable -> AttachmentChip(attachment)
+        PreviewImage.Unavailable -> AttachmentChip(attachment, imageClick)
     }
 }
 
 @Composable
-private fun AttachmentChip(attachment: ChatAttachment) {
+private fun AttachmentChip(attachment: ChatAttachment, modifier: Modifier = Modifier) {
     Surface(
+        modifier = modifier,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
         shape = RoundedCornerShape(8.dp),
     ) {

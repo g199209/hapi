@@ -28,6 +28,8 @@ import androidx.navigation.navArgument
 import app.hapi.companion.R
 import app.hapi.companion.ui.components.FullTextAction
 import app.hapi.companion.feature.chat.blocks.*
+import app.hapi.companion.feature.chat.attachments.AttachmentImageViewer
+import app.hapi.companion.feature.chat.attachments.LocalOpenAttachmentImage
 import app.hapi.companion.feature.chat.composer.DictationController
 import app.hapi.companion.ui.markdown.LocalMarkdownLinkHandler
 import app.hapi.companion.ui.markdown.LocalMarkdownRenderCache
@@ -132,14 +134,23 @@ internal fun ChatHost(
         ChatInteractions(state.flavor, state.permissionOverrides, viewModel::resolvePermission, viewModel::retryFailedMessage, commentOnResponse = viewModel.annotations::request)
     }
     val openFile: (String, Int?) -> Unit = { path, line -> pauseReading(); onOpenFile(path, line) }
+    val openImage = remember(viewModel) {
+        { attachment: ChatAttachment -> pauseReading(); viewModel.attachmentImagePreview.open(attachment) }
+    }
     CompositionLocalProvider(
         LocalChatInspection provides actions,
         LocalChatInteractions provides interactions,
         LocalChatMedia provides media,
+        LocalOpenAttachmentImage provides openImage,
         LocalMarkdownRenderCache provides viewModel.markdownCache,
         LocalMarkdownLinkHandler provides rememberChatLinkHandler(onOpenFile = openFile),
     ) {
         Box(Modifier.fillMaxSize()) {
+            viewModel.attachmentImagePreview.let { preview ->
+                preview.attachment?.let { image ->
+                    key(image.id, image.path) { AttachmentImageViewer(image, preview.zoom, preview::dismiss) }
+                }
+            }
             if (entry?.destination?.route != "thread") app.hapi.companion.feature.chat.annotations.AnnotationDialog(viewModel.annotations)
             NavHost(navigation, startDestination = "thread") {
                 composable("thread") {

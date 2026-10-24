@@ -396,6 +396,7 @@ class ChatViewModel(
     private val sendRecoveryFollowing = MutableStateFlow(true)
     private var sendRecoveryJob: Job? = null
     internal val inspection = ChatInspectionState()
+    internal val attachmentImagePreview = app.hapi.companion.feature.chat.attachments.AttachmentImagePreview()
     private val transcriptProjection = TranscriptProjection()
     val reconnecting: StateFlow<Boolean> = sseEngine.reconnecting(subscriptionKey)
         .stateIn(scope, SharingStarted.Eagerly, false)

@@ -68,6 +68,12 @@ anchor.
   pinch zoom, double-tap zoom/fit, bounded panning and a Fit to screen action.
   Zoom and the focal point survive rotation. Original raster bytes decode off
   the main thread; the file toolbar remains available while zoomed.
+- **User images:** tap a sent image thumbnail (or its filename if no thumbnail
+  is available) to open a full-screen zoom/pan viewer. It reads the original
+  through the session's file API only when opened, keeping the stored preview
+  visible while loading. Missing/offline originals fall back to the preview;
+  zoom and the open viewer survive rotation. Close or Android Back returns to
+  the same conversation position.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Image/file drafts retain their thumbnail,
   upload path and pending retry bytes per Hub/session. Preparation and uploads

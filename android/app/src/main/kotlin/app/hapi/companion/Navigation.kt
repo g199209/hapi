@@ -357,7 +357,9 @@ fun HapiNavigation() {
                         graph.scope.launch { graph.chatDisplayPrefs.setShowActivity(hubGraph.hubUrl, sessionId, enabled) }
                     },
                     media = remember(hubGraph, sessionId) {
-                        ChatMedia(hubGraph.imageLoader) { imageId ->
+                        ChatMedia(hubGraph.imageLoader, readAttachment = { path ->
+                            hubGraph.session.api.readSessionFile(sessionId, path)
+                        }) { imageId ->
                             hubGraph.generatedImageUrl(sessionId, imageId)
                         }
                     },

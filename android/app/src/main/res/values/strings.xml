@@ -636,4 +636,8 @@
     <string name="image_zoom_in">Zoom in</string>
     <string name="image_zoom_out">Zoom out</string>
     <string name="image_zoom_level">Zoom %1$d%%</string>
+    <string name="image_open_preview">Open image</string>
+    <string name="image_close_preview">Close image</string>
+    <string name="image_preview_fallback">Original unavailable · Showing preview</string>
+    <string name="image_load_failed">Could not load image</string>
 </resources>

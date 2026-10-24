@@ -636,4 +636,8 @@
     <string name="image_zoom_in">Увеличить</string>
     <string name="image_zoom_out">Уменьшить</string>
     <string name="image_zoom_level">Масштаб %1$d%%</string>
+    <string name="image_open_preview">Открыть изображение</string>
+    <string name="image_close_preview">Закрыть изображение</string>
+    <string name="image_preview_fallback">Оригинал недоступен · Показано превью</string>
+    <string name="image_load_failed">Не удалось загрузить изображение</string>
 </resources>
