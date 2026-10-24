@@ -631,4 +631,9 @@
     <string name="hub_opening_connecting">Connecting to HAPI…</string>
     <string name="hub_opening_failed">Cannot connect to HAPI</string>
     <string name="hub_opening_failed_hint">Check your network and that the server is running, then try again.</string>
+    <string name="image_zoom_hint">Pinch or double-tap to zoom</string>
+    <string name="image_zoom_fit">Fit to screen</string>
+    <string name="image_zoom_in">Zoom in</string>
+    <string name="image_zoom_out">Zoom out</string>
+    <string name="image_zoom_level">Zoom %1$d%%</string>
 </resources>

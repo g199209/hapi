@@ -64,6 +64,10 @@ anchor.
   parts with full-content copy/export. Relative images, CSS and scripts use the
   same Runner-backed file API. Browser state survives rotation and Source
   switching; the report browser has a synthetic origin and no Hub credentials.
+- **Image files:** the file preview uses an independent image viewport with
+  pinch zoom, double-tap zoom/fit, bounded panning and a Fit to screen action.
+  Zoom and the focal point survive rotation. Original raster bytes decode off
+  the main thread; the file toolbar remains available while zoomed.
 - **Composer:** optimistic send, queue/steer where supported, drafts and
   attachments uploaded on selection. Image/file drafts retain their thumbnail,
   upload path and pending retry bytes per Hub/session. Preparation and uploads

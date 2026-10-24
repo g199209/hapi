@@ -631,4 +631,9 @@
     <string name="hub_opening_connecting">Подключение к HAPI…</string>
     <string name="hub_opening_failed">Не удалось подключиться к HAPI</string>
     <string name="hub_opening_failed_hint">Проверьте подключение к сети и убедитесь, что сервер работает, затем повторите попытку.</string>
+    <string name="image_zoom_hint">Масштаб жестом или двойным нажатием</string>
+    <string name="image_zoom_fit">Вписать в экран</string>
+    <string name="image_zoom_in">Увеличить</string>
+    <string name="image_zoom_out">Уменьшить</string>
+    <string name="image_zoom_level">Масштаб %1$d%%</string>
 </resources>

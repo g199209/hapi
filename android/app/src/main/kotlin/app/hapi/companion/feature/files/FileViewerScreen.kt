@@ -2,7 +2,6 @@ package app.hapi.companion.feature.files
 
 import android.graphics.BitmapFactory
 import android.os.Bundle
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,12 +32,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -50,11 +51,15 @@ import app.hapi.companion.R
 import app.hapi.companion.feature.chat.rememberChatLinkHandler
 import app.hapi.companion.feature.chat.PagedTextContent
 import app.hapi.companion.ui.components.DiffView
+import app.hapi.companion.ui.components.ZoomableImage
+import app.hapi.companion.ui.components.rememberImageZoomState
 import app.hapi.companion.ui.markdown.CodeBlock
 import app.hapi.companion.ui.markdown.Markdown
 import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.markdown.HrefPolicy
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Single-file viewer (`chat/{sessionId}/file`), the Android take on web
@@ -127,6 +132,7 @@ fun FileViewerScreen(
             ModeToggleRow(state, viewModel)
 
             val html = (state.content as? FileContentUiState.Text)?.takeIf { it.isHtml }
+            val image = state.content as? FileContentUiState.Image
             val htmlState = rememberSaveable(state.path, html?.text?.hashCode()) { Bundle() }
             if (html != null && state.mode == ViewerMode.FILE && state.markdownPreview) {
                 HtmlReportPreview(
@@ -138,6 +144,8 @@ fun FileViewerScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     savedState = htmlState,
                 )
+            } else if (image != null && state.mode == ViewerMode.FILE) {
+                ImageContent(image, state.fileName, state.path, Modifier.fillMaxWidth().weight(1f))
             } else Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -276,7 +284,7 @@ private fun FileContent(state: FileViewerUiState) {
         is FileContentUiState.Failed -> HintBlock(content.message)
         FileContentUiState.Empty -> HintBlock(stringResource(R.string.files_viewer_empty))
         FileContentUiState.Binary -> HintBlock(stringResource(R.string.files_viewer_binary))
-        is FileContentUiState.Image -> ImageContent(content, state.fileName)
+        is FileContentUiState.Image -> Unit // Images own the bounded viewport above.
         is FileContentUiState.Text ->
             if (content.isMarkdown && state.markdownPreview) {
                 Markdown(text = content.text, modifier = Modifier.fillMaxWidth())
@@ -295,20 +303,23 @@ private fun FileContent(state: FileViewerUiState) {
 }
 
 @Composable
-private fun ImageContent(content: FileContentUiState.Image, fileName: String) {
-    val bitmap = remember(content) {
-        BitmapFactory.decodeByteArray(content.bytes, 0, content.bytes.size)?.asImageBitmap()
+private fun ImageContent(content: FileContentUiState.Image, fileName: String, path: String, modifier: Modifier) {
+    val imageKey = remember(path, content) { "$path:${content.bytes.contentHashCode()}" }
+    val zoom = rememberImageZoomState(imageKey)
+    val decoded by key(content) {
+        produceState<Result<ImageBitmap>?>(null, content) {
+            value = withContext(Dispatchers.Default) {
+                runCatching { requireNotNull(BitmapFactory.decodeByteArray(content.bytes, 0, content.bytes.size)).asImageBitmap() }
+            }
+        }
     }
-    if (bitmap == null) {
-        // SVG and other formats BitmapFactory can't decode.
-        HintBlock(stringResource(R.string.files_viewer_image_unsupported))
-    } else {
-        Image(
-            bitmap = bitmap,
-            contentDescription = fileName,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth(),
-        )
+    Box(modifier) {
+        val bitmap = decoded?.getOrNull()
+        when {
+            decoded == null -> LoadingBlock()
+            bitmap == null -> HintBlock(stringResource(R.string.files_viewer_image_unsupported))
+            else -> ZoomableImage(bitmap, fileName, zoom, Modifier.fillMaxSize())
+        }
     }
 }
 
