@@ -208,6 +208,8 @@ export const CodexLocalSessionSummarySchema = z.object({
     title: z.string(),
     lastUserMessage: z.string().nullable().optional(),
     cwd: z.string().nullable().optional(),
+    /** Primary working directory resolved by the owning machine's Git registry. */
+    basePath: z.string().nullable().optional(),
     file: z.string().min(1),
     modifiedAt: z.number(),
     originator: z.string().nullable().optional(),
@@ -776,6 +778,8 @@ export type MachineListDirectoryResponse = {
 
 export type PathExistsResponse = {
     exists: Record<string, boolean>
+    /** Linked worktree cwd -> primary repository directory. */
+    worktreeBasePaths?: Record<string, string>
     /** Requested paths rejected by the runner's configured workspace roots. */
     outsideWorkspaceRoots?: string[]
 }

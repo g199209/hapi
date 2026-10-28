@@ -15,6 +15,7 @@ data class CodexLocalSessionSummary(
     val cliVersion: String? = null,
     val threadSource: String? = null,
     val forkedFromId: String? = null,
+    val basePath: String? = null,
 )
 
 @Serializable

@@ -30,6 +30,30 @@ import org.junit.Test
 class CodexSessionImportTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun baseDirectoryPickerIncludesRelatedWorktreesAndKeepsTheirNativeSelection() {
+        var state by mutableStateOf(CodexSessionImportState(
+            open = true, machineId = "local", machineLabel = "GMF-PC",
+            sessions = listOf(
+                CodexLocalSessionSummary("main", "Primary", 3, "/home/repo", basePath = "/home/repo"),
+                CodexLocalSessionSummary("tree", "Feature worktree", 2, "/custom/feature", basePath = "/home/repo"),
+                CodexLocalSessionSummary("other", "Other clone", 1, "/elsewhere/repo", basePath = "/elsewhere/repo"),
+            ),
+        ))
+        compose.setContent { HapiTheme {
+            CodexSessionImportSheet(state, {}, {}, {},
+                { state = state.copy(directory = it, selectedId = null) },
+                { state = state.copy(selectedId = it) }, {})
+        } }
+        compose.onNodeWithTag("codex-import-directory").performClick()
+        compose.onNodeWithTag("codex-import-path-/custom/feature").assertDoesNotExist()
+        compose.onNodeWithTag("codex-import-path-/home/repo").performClick()
+        compose.onNodeWithTag("codex-import-main").assertIsDisplayed()
+        compose.onNodeWithTag("codex-import-tree").assertIsDisplayed().performClick().assertIsSelected()
+        compose.onNodeWithTag("codex-import-other").assertDoesNotExist()
+        compose.onNodeWithTag("codex-import-confirm").assertIsEnabled()
+        compose.runOnIdle { assertEquals("tree", state.selectedId) }
+    }
+
     @Test fun searchAndWholeRowSelectionEnableImportAndKeepErrorVisible() {
         val state = mutableStateOf(CodexSessionImportState(
             open = true, machineId = "remote", machineLabel = "quantlab2",

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdtempSync, rmSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 const ioMock = vi.hoisted(() => vi.fn())
 const listOpencodeModelsForCwdMock = vi.hoisted(() => vi.fn())
@@ -600,6 +601,40 @@ describe('ApiMachineClient Codex transcript handlers', () => {
         } finally {
             client.shutdown()
         }
+    })
+
+    it('returns primary repository identity for native histories in linked worktrees', async () => {
+        const git = (args: string[]) => execFileSync('git', args, { cwd: workspaceRoot, stdio: 'pipe', env: {
+            ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.com',
+            GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.com'
+        } })
+        git(['init']); git(['commit', '--allow-empty', '-m', 'initial'])
+        const tree = join(workspaceRoot, 'arbitrary-feature')
+        git(['worktree', 'add', '--detach', tree])
+        writeCodexTranscript(codexHome, 'feature.jsonl', { id: 'feature-session-id', cwd: tree }, 'feature prompt')
+        const machine = makeMachine('worktree-machine')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+        try {
+            const result = await callListCodexSessions(client, machine.id, {})
+            expect(result).toMatchObject({ success: true, sessions: [{
+                id: 'feature-session-id', cwd: tree, basePath: workspaceRoot
+            }] })
+        } finally { client.shutdown() }
+    })
+
+    it('does not silently truncate import history to the newest 200 sessions', async () => {
+        for (let index = 0; index < 205; index++) {
+            writeCodexTranscript(codexHome, `history-${index}.jsonl`, {
+                id: `history-${index}`, cwd: workspaceRoot,
+            }, `prompt ${index}`)
+        }
+        const machine = makeMachine('complete-history-machine')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+        try {
+            const result = await callListCodexSessions(client, machine.id, {})
+            expect(result).toMatchObject({ success: true })
+            expect((result as { sessions: unknown[] }).sessions).toHaveLength(205)
+        } finally { client.shutdown() }
     })
 
     it.each([undefined, 'unix:///test/codex.sock'])('marks import RPC history for V2 projection with endpoint %s', async (endpoint) => {

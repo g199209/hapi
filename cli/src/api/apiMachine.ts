@@ -67,6 +67,7 @@ import { homedir } from 'node:os'
 import type { CursorChatStoreStatus } from '@hapi/protocol/apiTypes'
 import { MachinePathPolicy } from './machinePathPolicy'
 import { getAgentAvailabilityResponse } from '@/agent/agentAvailability'
+import { resolveGitRepositoryPaths } from '@/utils/gitRepositoryPaths'
 
 export { normalizeWindowsDriveRoot } from './machinePathPolicy'
 
@@ -166,8 +167,16 @@ export class ApiMachineClient {
                 }
             }))
 
+            const repositories = await resolveGitRepositoryPaths(Object.keys(exists).filter(path => exists[path]))
+            const worktreeBasePaths: Record<string, string> = {}
+            for (const [path, repository] of repositories) {
+                if (repository.linked && this.pathPolicy.isWithinSpawnRoots(await this.pathPolicy.resolveForCheck(repository.basePath))) {
+                    worktreeBasePaths[path] = repository.basePath
+                }
+            }
             return {
                 exists,
+                ...(Object.keys(worktreeBasePaths).length ? { worktreeBasePaths } : {}),
                 ...(outsideWorkspaceRoots.length > 0 ? { outsideWorkspaceRoots } : {}),
             }
         })
@@ -348,12 +357,18 @@ export class ApiMachineClient {
                     : null
                 const allSessions = requestedIds
                     ? listLocalCodexSessionsWithMessagesByIds(requestedIds)
-                    : listLocalCodexSessionSummaries()
-                const sessions = []
+                    : listLocalCodexSessionSummaries(Number.MAX_SAFE_INTEGER)
+                const allowedSessions = []
                 for (const session of allSessions) {
-                    if (await this.isLocalSessionWithinWorkspaceRoots(session)) {
-                        sessions.push(session)
-                    }
+                    if (await this.isLocalSessionWithinWorkspaceRoots(session)) allowedSessions.push(session)
+                }
+                const repositories = await resolveGitRepositoryPaths(allowedSessions.map(session => session.cwd ?? ''))
+                const sessions = []
+                for (const session of allowedSessions) {
+                    const repository = session.cwd ? repositories.get(session.cwd) : undefined
+                    const basePath = repository && this.pathPolicy.isWithinSpawnRoots(await this.pathPolicy.resolveForCheck(repository.basePath))
+                        ? repository.basePath : undefined
+                    sessions.push({ ...session, ...(basePath ? { basePath } : {}) })
                 }
                 return { success: true, sessions }
             }

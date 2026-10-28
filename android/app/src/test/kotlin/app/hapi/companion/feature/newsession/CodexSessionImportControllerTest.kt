@@ -41,6 +41,42 @@ private fun native(id: String, cwd: String? = "/home/project", at: Long = 10) =
     CodexLocalSessionSummary(id, "Title $id", at, cwd, "中文候选内容 $id")
 
 class CodexSessionImportControllerTest {
+    @Test fun `primary directory includes linked worktrees and canonicalizes imported recents without changing native thread`() = runTest {
+        val gateway = FakeCodexSessionImportGateway().apply {
+            listResponse = CodexLocalSessionsResponse(true, listOf(
+                native("main", "/base", 1).copy(basePath = "/base"),
+                native("worktree", "/custom/location", 2).copy(basePath = "/base"),
+                native("clone", "/other/base", 3).copy(basePath = "/other/base"),
+            ))
+        }
+        val completed = mutableListOf<String?>()
+        val controller = CodexSessionImportController(gateway, this, "failed", "failed") { _, cwd, _ -> completed += cwd }
+        controller.open("m1", "Machine", "/custom/location")
+        advanceUntilIdle()
+        assertEquals("/base", controller.state.value.directory)
+        assertEquals(listOf("/base", "/other/base"), controller.state.value.directories)
+        assertEquals(listOf("worktree", "main"), controller.state.value.filteredSessions.map { it.id })
+        controller.setQuery("/base")
+        assertEquals(2, controller.state.value.filteredSessions.size)
+        controller.select("worktree")
+        controller.confirm()
+        advanceUntilIdle()
+        assertEquals(listOf("m1" to "worktree"), gateway.imports)
+        assertEquals(listOf<String?>("/base"), completed)
+    }
+
+    @Test fun `base directory remains selectable when all its history is in linked worktrees`() = runTest {
+        val gateway = FakeCodexSessionImportGateway().apply {
+            listResponse = CodexLocalSessionsResponse(true, listOf(native("tree", "/trees/x").copy(basePath = "/base")))
+        }
+        val controller = CodexSessionImportController(gateway, this, "failed", "failed") { _, _, _ -> }
+        controller.open("m1", "Machine", "/base")
+        advanceUntilIdle()
+        assertEquals("/base", controller.state.value.directory)
+        assertEquals(listOf("tree"), controller.state.value.filteredSessions.map { it.id })
+        controller.setDirectory(null)
+        assertEquals(1, controller.state.value.filteredSessions.size)
+    }
     @Test fun `existing active thread opens directly and concurrent import resolves new active record`() = runTest {
         val gateway = FakeCodexSessionImportGateway().apply {
             listResponse = CodexLocalSessionsResponse(true, listOf(native("a")))

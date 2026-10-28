@@ -60,6 +60,7 @@ private class FakeGateway : NewSessionGateway {
     )
     var availabilityThrows: Exception? = null
     var outsideWorkspaceRoots: Set<String> = emptySet()
+    var worktreeBasePaths: Map<String, String> = emptyMap()
     var listDirectoryHandler: (suspend (String, Boolean) -> MachineListDirectoryResponse)? = null
 
     override suspend fun spawn(machineId: String, request: SpawnSessionRequest): SpawnResponse {
@@ -83,6 +84,7 @@ private class FakeGateway : NewSessionGateway {
         return MachinePathsExistsResponse(
             exists = paths.mapNotNull { path -> existsAnswer(path)?.let { path to it } }.toMap(),
             outsideWorkspaceRoots = paths.filter { it in outsideWorkspaceRoots }.takeIf { it.isNotEmpty() },
+            worktreeBasePaths = worktreeBasePaths.filterKeys { it in paths },
         )
     }
 
@@ -413,6 +415,44 @@ class NewSessionLogicTest {
 // ---------------------------------------------------------- view model flow --
 
 class NewSessionViewModelTest {
+    @Test
+    fun `recent worktrees collapse into the primary directory including restored draft flows`() = runTest {
+        val gateway = FakeGateway().apply {
+            worktreeBasePaths = mapOf("/trees/a/repo" to "/repo", "/custom/feature" to "/repo")
+        }
+        val prefs = FakePrefs(stored = NewSessionPrefsData(recentPaths = mapOf(
+            "m1" to listOf("/trees/a/repo", "/other", "/repo", "/custom/feature"))))
+        val vm = buildViewModel(gateway, FakeMachineStore(listOf(machine("m1"))), prefs)
+        advanceUntilIdle()
+        assertEquals(listOf("/repo", "/other"), vm.uiState.value.recentPaths)
+        assertEquals("/repo", vm.uiState.value.form.directory)
+        vm.setDirectory("/custom/feature")
+        advanceUntilIdle()
+        vm.create()
+        advanceUntilIdle()
+        assertEquals("/repo", prefs.stored.recentPaths["m1"]?.first())
+        assertFalse(prefs.stored.recentPaths["m1"].orEmpty().contains("/custom/feature"))
+
+        val restored = buildViewModel(gateway, FakeMachineStore(listOf(machine("m1"))),
+            FakePrefs(stored = NewSessionPrefsData(recentPaths = mapOf("m1" to listOf("/custom/feature", "/repo"))),
+                draft = NewSessionForm(machineId = "m1", directory = "/manual/path")))
+        advanceUntilIdle()
+        assertEquals("/manual/path", restored.uiState.value.form.directory)
+        assertEquals(listOf("/repo"), restored.uiState.value.recentPaths)
+    }
+
+    @Test
+    fun `worktree recent mapping belongs to the selected machine only`() = runTest {
+        val gateway = FakeGateway().apply { worktreeBasePaths = mapOf("/tree" to "/base") }
+        val vm = buildViewModel(gateway, FakeMachineStore(listOf(machine("m1"), machine("m2"))),
+            FakePrefs(stored = NewSessionPrefsData(recentPaths = mapOf("m1" to listOf("/tree"), "m2" to listOf("/tree")))))
+        advanceUntilIdle()
+        assertEquals(listOf("/base"), vm.uiState.value.recentPaths)
+        gateway.worktreeBasePaths = emptyMap()
+        vm.setMachine("m2")
+        advanceUntilIdle()
+        assertEquals(listOf("/tree"), vm.uiState.value.recentPaths)
+    }
 
     /**
      * VM scope on the test scheduler as FOREGROUND work: `advanceUntilIdle`

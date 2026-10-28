@@ -360,8 +360,11 @@ export class RpcGateway {
         const outsideWorkspaceRoots = Array.isArray((result as RpcPathExistsResponse).outsideWorkspaceRoots)
             ? (result as RpcPathExistsResponse).outsideWorkspaceRoots?.filter((path): path is string => typeof path === 'string')
             : undefined
+        const worktreeBasePaths = Object.fromEntries(Object.entries((result as RpcPathExistsResponse).worktreeBasePaths ?? {})
+            .filter(([path, base]) => path in exists && exists[path] && typeof base === 'string' && base.length > 0))
         return {
             exists,
+            ...(Object.keys(worktreeBasePaths).length ? { worktreeBasePaths } : {}),
             ...(outsideWorkspaceRoots?.length ? { outsideWorkspaceRoots } : {}),
         }
     }

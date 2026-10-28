@@ -229,6 +229,7 @@ data class MachineDirectoryEntry(
 data class MachinePathsExistsResponse(
     val exists: Map<String, Boolean>,
     val outsideWorkspaceRoots: List<String>? = null,
+    val worktreeBasePaths: Map<String, String> = emptyMap(),
 )
 
 /** `GET /api/machines/:id/agent-availability`. */

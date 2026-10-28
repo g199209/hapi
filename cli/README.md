@@ -13,6 +13,9 @@ Choose a supported coding agent from your terminal and control its sessions remo
 - Provides an MCP stdio bridge for external tools.
 - Manages a background runner for long-running sessions.
 - Includes diagnostics and auth helpers.
+- Resolves primary repository paths from Git worktree identity for machine path
+  checks and Codex history discovery. Clients can group related worktrees without
+  changing the original session cwd or confusing separate clones.
 
 ## Typical flow
 

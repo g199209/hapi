@@ -39,6 +39,12 @@ anchor.
   Opening the session clears its manual unread marker. Delete requires an inactive session. Resume or
   Reopen can return another session ID: seed its window, move the draft and
   replace navigation with the returned ID.
+- **Project directories:** recent paths collapse linked Git worktrees into their
+  primary repository directory. Codex import offers one directory per project;
+  selecting it includes linked worktree sessions and preserves each selected
+  thread's original cwd on import. Relationships come from the owning Runner's
+  Git worktree registry, including registered missing worktrees; separate clones
+  remain separate projects. Explicitly typed worktree paths remain usable.
 - **Archive gesture:** hold a session, drag left and release beyond the threshold.
   A green archive background, release hint and haptics show readiness; short,
   canceled, early or rightward drags do not archive. Vertical scrolling keeps

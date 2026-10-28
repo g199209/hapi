@@ -178,6 +178,7 @@ class NewSessionViewModel(
     private val agentAvailability = MutableStateFlow<AgentAvailabilityUi>(AgentAvailabilityUi.Loading)
     private val suggestions = MutableStateFlow<List<String>>(emptyList())
     private val pathExistence = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    private val worktreeBasePaths = MutableStateFlow<Map<String, String>>(emptyMap())
     private val outsideWorkspaceRoots = MutableStateFlow<Set<String>>(emptySet())
     private val directoryLookupError = MutableStateFlow<String?>(null)
     private val isSpawning = MutableStateFlow(false)
@@ -291,9 +292,9 @@ class NewSessionViewModel(
         form,
         machineStore.machines,
         combine(codexModels, agentAvailability) { codex, availability -> CatalogState(codex, availability) },
-        combine(suggestions, pathExistence, prefsData, outsideWorkspaceRoots, directoryLookupError) {
-                s, exists, stored, outside, lookupError ->
-            DirectoryData(s, exists, stored, outside, lookupError)
+        combine(suggestions, combine(pathExistence, worktreeBasePaths) { exists, bases -> exists to bases }, prefsData, outsideWorkspaceRoots, directoryLookupError) {
+                s, paths, stored, outside, lookupError ->
+            DirectoryData(s, paths.first, stored, outside, lookupError, paths.second)
         },
         combine(isSpawning, spawnError, confirmCreateDirectory, machinesRefreshSettled) {
             spawning, error, confirmed, settled ->
@@ -331,6 +332,7 @@ class NewSessionViewModel(
         val stored: NewSessionPrefsData,
         val outsideWorkspaceRoots: Set<String>,
         val lookupError: String?,
+        val worktreeBasePaths: Map<String, String> = emptyMap(),
     )
 
     // ------------------------------------------------------------ actions --
@@ -532,7 +534,11 @@ class NewSessionViewModel(
                 return@launch
             }
             val outside = result.outsideWorkspaceRoots.orEmpty().toSet()
-            val valid = recent.firstOrNull { result.exists[it] == true && it !in outside } ?: return@launch
+            if (form.value.machineId != machineId) return@launch
+            pathExistence.update { it + result.exists }
+            worktreeBasePaths.update { (it - recent.toSet()) + result.worktreeBasePaths }
+            val valid = recent.firstOrNull { result.exists[it] == true && it !in outside }
+                ?.let { result.worktreeBasePaths[it] ?: it } ?: return@launch
             if (form.value.machineId == machineId && form.value.directory == fallback) {
                 suppressSuggestions = true
                 form.update { it.copy(directory = valid) }
@@ -544,6 +550,7 @@ class NewSessionViewModel(
     private fun applyMachineSelection(machineId: String, resetDirectory: Boolean) {
         directoryBrowser.close()
         pathExistence.value = emptyMap()
+        worktreeBasePaths.value = emptyMap()
         outsideWorkspaceRoots.value = emptySet()
         directoryLookupError.value = null
         suggestions.value = emptyList()
@@ -621,9 +628,10 @@ class NewSessionViewModel(
                     .filter { it != trimmed }
             }
 
-            if (trimmed.isNotEmpty()) {
+            val checkedPaths = (listOf(trimmed) + recentPathsFor(machineId)).filter(String::isNotBlank).distinct()
+            if (checkedPaths.isNotEmpty()) {
                 val result = try {
-                    gateway.pathsExist(machineId, listOf(trimmed))
+                    gateway.pathsExist(machineId, checkedPaths)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {
@@ -631,8 +639,9 @@ class NewSessionViewModel(
                 }
                 if (result != null && directoryRequestVersion == requestVersion && form.value.machineId == machineId) {
                     pathExistence.update { it + result.exists }
+                    worktreeBasePaths.update { (it - checkedPaths.toSet()) + result.worktreeBasePaths }
                     outsideWorkspaceRoots.update { currentOutside ->
-                        (currentOutside - trimmed) + result.outsideWorkspaceRoots.orEmpty()
+                        (currentOutside - checkedPaths.toSet()) + result.outsideWorkspaceRoots.orEmpty()
                     }
                 }
             }
@@ -751,7 +760,9 @@ class NewSessionViewModel(
         val updated = prefsData.value.let { stored ->
             stored.copy(
                 lastMachineId = machineId,
-                recentPaths = stored.recentPaths + (machineId to pushRecent(stored.recentPaths[machineId].orEmpty(), directory)),
+                recentPaths = stored.recentPaths + (machineId to pushRecent(
+                    stored.recentPaths[machineId].orEmpty().map { worktreeBasePaths.value[it] ?: it }.distinct(),
+                    worktreeBasePaths.value[directory] ?: directory)),
             )
         }
         prefsData.value = updated
@@ -855,7 +866,9 @@ class NewSessionViewModel(
             machinesLoading = machines.isEmpty() && !flags.machinesSettled,
             runnerSpawnError = formatRunnerSpawnError(selectedMachine),
             suggestions = currentSuggestions,
-            recentPaths = currentForm.machineId?.let { stored.recentPaths[it] }.orEmpty(),
+            recentPaths = currentForm.machineId?.let { stored.recentPaths[it] }.orEmpty()
+                .filter { exists[it] == true && it !in directoryData.outsideWorkspaceRoots }
+                .map { directoryData.worktreeBasePaths[it] ?: it }.distinct(),
             directoryStatus = directoryStatus,
             agents = availableAgentIds.map { OptionItem(it, Flavors.label(it)) },
             agentAvailabilityLoading = availability is AgentAvailabilityUi.Loading,

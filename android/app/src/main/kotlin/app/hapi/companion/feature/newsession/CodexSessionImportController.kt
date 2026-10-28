@@ -49,16 +49,24 @@ data class CodexSessionImportState(
     val selectedId: String? = null,
     val error: String? = null,
 ) {
-    val directories: List<String> get() = sessions.mapNotNull { it.cwd?.trim()?.takeIf(String::isNotEmpty) }.distinct().sorted()
+    val directories: List<String> get() = sessions.mapNotNull { it.projectDirectory }.distinct().sorted()
     val filteredSessions: List<CodexLocalSessionSummary> get() {
         val search = query.trim()
         return sessions.filter { session ->
-            (directory == null || session.cwd?.trim() == directory) &&
-                (search.isEmpty() || listOf(session.title, session.lastUserMessage, session.cwd, session.id, session.originator)
+            (directory == null || session.projectDirectory == directory || session.cwd?.trim() == directory) &&
+                (search.isEmpty() || listOf(session.title, session.lastUserMessage, session.cwd, session.basePath, session.id, session.originator)
                     .any { it?.contains(search, ignoreCase = true) == true })
         }
     }
     val canImport: Boolean get() = !loading && !importing && sessions.any { it.id == selectedId }
+}
+
+private val CodexLocalSessionSummary.projectDirectory: String?
+    get() = basePath?.trim()?.takeIf(String::isNotEmpty) ?: cwd?.trim()?.takeIf(String::isNotEmpty)
+
+private fun List<CodexLocalSessionSummary>.projectDirectory(path: String?): String? {
+    val value = path?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    return firstOrNull { it.cwd?.trim() == value || it.projectDirectory == value }?.projectDirectory
 }
 
 /** Keeps the machine/thread pair fixed for the entire import and resume. */
@@ -113,7 +121,7 @@ class CodexSessionImportController(
                 mutableState.update { current ->
                     current.copy(
                         loading = false, sessions = sessions,
-                        directory = preferredDirectory?.trim()?.takeIf { path -> sessions.any { it.cwd?.trim() == path } },
+                        directory = sessions.projectDirectory(preferredDirectory),
                         selectedId = current.selectedId?.takeIf { id -> sessions.any { it.id == id } },
                     )
                 }
@@ -130,7 +138,9 @@ class CodexSessionImportController(
     }
 
     fun setDirectory(directory: String?) {
-        if (!state.value.importing) mutableState.update { it.copy(directory = directory, selectedId = null) }
+        if (!state.value.importing) mutableState.update {
+            it.copy(directory = it.sessions.projectDirectory(directory) ?: directory?.trim(), selectedId = null)
+        }
     }
 
     fun select(id: String) {
@@ -163,7 +173,7 @@ class CodexSessionImportController(
                 imported = selected.id to hapiId
                 val resumedId = gateway.resume(hapiId)
                 check(resumedId.isNotBlank()) { importFailed }
-                onImported(current.machineId, selected.cwd, resumedId)
+                onImported(current.machineId, selected.projectDirectory, resumedId)
                 mutableState.value = CodexSessionImportState()
                 imported = null
             } catch (cancel: CancellationException) {

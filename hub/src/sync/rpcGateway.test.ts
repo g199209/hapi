@@ -4,7 +4,7 @@ import { PERMISSION_REQUEST_NOT_FOUND_MESSAGE } from '@hapi/protocol/rpcMethods'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import { PermissionRequestNotFoundError, RpcGateway, RpcTargetMissingError } from './rpcGateway'
 
-function createGateway() {
+function createGateway(reply?: unknown) {
     const timeouts: number[] = []
     const calls: Array<{ method: string; params: string }> = []
     const socket = {
@@ -13,6 +13,7 @@ function createGateway() {
             return {
                 async emitWithAck(_event: string, payload: { method: string; params: string }) {
                     calls.push(payload)
+                    if (reply !== undefined) return JSON.stringify(reply)
                     if (payload.method.endsWith(':renameCodexSession')) {
                         const name = JSON.parse(payload.params).name
                         return JSON.stringify(name === 'Native failure' ? { error: 'Native unavailable' } : { success: true, name })
@@ -56,6 +57,17 @@ function createGateway() {
 }
 
 describe('RpcGateway RPC timeouts', () => {
+    it('preserves Runner worktree identity through path checks and Codex history schemas', async () => {
+        const paths = createGateway({ exists: { '/feature': true }, worktreeBasePaths: { '/feature': '/main' } })
+        expect(await paths.gateway.checkPathsExist('machine', ['/feature'])).toEqual({
+            exists: { '/feature': true }, worktreeBasePaths: { '/feature': '/main' },
+        })
+        const history = createGateway({ success: true, sessions: [{ id: 'native', title: 'Feature',
+            file: '/history.jsonl', modifiedAt: 1, cwd: '/feature', basePath: '/main' }] })
+        expect(await history.gateway.listCodexSessionsForMachine('machine')).toMatchObject({
+            sessions: [{ id: 'native', cwd: '/feature', basePath: '/main' }],
+        })
+    })
     it('waits for the runner startup budget when restoring a session', async () => {
         const { gateway, timeouts } = createGateway()
         await gateway.spawnSession('machine-1', '/workspace', 'codex')

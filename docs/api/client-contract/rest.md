@@ -154,8 +154,20 @@ Source: `hub/src/web/routes/machines.ts`; schemas `SpawnSessionRequestSchema`, `
 | `GET /api/machines/:id/agent-availability` | — | `{agents: {agent, available, reason?: 'not_found'\|'invalid_configuration'}[]}`; 409 `runner_upgrade_required` on old runners |
 | `POST /api/machines/:id/spawn` | `{directory, agent?, model?, effort?, modelReasoningEffort?, yolo?, permissionMode?, sessionType?: 'simple'\|'worktree', worktreeName?, serviceTier?, collaborationMode?, copilotAgentMode?, startingMode?: 'remote'\|'pty'}` | `{type: 'success', sessionId}` \| `{type: 'error', message, code?, agent?}` (agy accepts only `remote`) |
 | `POST /api/machines/:id/list-directory` | `{path, includeHidden?}` | `{success, entries?: (DirectoryEntry & {isGitRepo?})[], error?}` |
-| `POST /api/machines/:id/paths/exists` | `{paths: string[]}` (≤ 1000) | `{exists: Record<string, boolean>, outsideWorkspaceRoots?: string[]}` |
+| `POST /api/machines/:id/paths/exists` | `{paths: string[]}` (≤ 1000) | `{exists: Record<string, boolean>, outsideWorkspaceRoots?: string[], worktreeBasePaths?: Record<string, string>}` |
 | `POST /api/machines/:id/restart-runner` | `{}` | `{message}`; errors carry `code: 'machine_not_found' \| 'machine_offline'` |
+
+`worktreeBasePaths` maps checked linked worktree directories to the primary
+repository directory, resolved by the owning Runner's Git worktree registry.
+Recent-path clients can replace those entries with the primary path and deduplicate.
+
+Android Codex history import uses `GET /api/codex/sessions?machineId=...`.
+Its `{success, machineId, sessions}` response includes each thread's `id`, `cwd`,
+`title`, `modifiedAt` and optional `basePath`. A base-directory filter matches
+`basePath ?? cwd`; import still uses the original native ID/cwd. Discovery returns
+all allowed histories instead of silently truncating to the newest 200. Registered
+missing worktrees can be associated through Git; unrelated clones stay separate.
+
 
 Note the spawn response is discriminated on `type`, not HTTP status — a failed
 spawn is still HTTP 200. Stable spawn failure codes are
@@ -299,7 +311,7 @@ internal and must never be used by clients.
 
 | Area | Paths | Current use or restriction |
 |------|-------|------------------|
-| Codex Desktop import | `/api/codex/*` (`hub/src/web/routes/codexDesktop.ts`) | Desktop-import tooling |
+| Codex Desktop tooling | Remaining `/api/codex/*` (`hub/src/web/routes/codexDesktop.ts`) | Android uses the history/sync-session subset; other desktop tooling stays outside its UI |
 | Pi session import | `/api/pi/*`, `/api/sessions/:id/pi-*` (`hub/src/web/routes/piSessions.ts`, `sessions.ts`) | Import tooling (the `pi-models` catalog above is the one exception) |
 | Work graph | `/api/work-graph/*` (`hub/src/web/routes/workGraph.ts`) | Web-only feature |
 | Web Push | `/api/push/*` (`hub/src/web/routes/push.ts`) | Browser Push API; natives use `/api/devices/register` (Android/iOS push contract) |

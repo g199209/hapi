@@ -61,6 +61,7 @@ type CodexLocalSessionSummary = {
     title: string
     lastUserMessage?: string | null
     cwd?: string | null
+    basePath?: string | null
     file: string
     modifiedAt: number
     originator?: string | null
