@@ -54,6 +54,9 @@ sealed interface FileContentUiState {
 
     /** Raw image bytes for `BitmapFactory` (identity equality is fine here). */
     class Image(val bytes: ByteArray, val mimeType: String) : FileContentUiState
+
+    /** Original PDF bytes for the embedded document reader. */
+    class Pdf(val bytes: ByteArray) : FileContentUiState
 }
 
 data class FileViewerUiState(
@@ -213,6 +216,9 @@ class FileViewerViewModel(
         if (mime != null) {
             return DecodedContent(FileContentUiState.Image(bytes, mime), response.size, response.modified)
         }
+        if (fileExtension(path) == "pdf") {
+            return DecodedContent(FileContentUiState.Pdf(bytes), response.size, response.modified)
+        }
 
         val text = String(bytes, Charsets.UTF_8)
         if (isBinaryContent(text)) {
@@ -247,6 +253,7 @@ class FileViewerViewModel(
         }
         val current = stateFlow.value
         val shouldShowFile = current.content is FileContentUiState.Image ||
+            current.content is FileContentUiState.Pdf ||
             current.diff is DiffUiState.Empty ||
             current.diff is DiffUiState.Failed
         if (shouldShowFile && current.mode == ViewerMode.DIFF) {

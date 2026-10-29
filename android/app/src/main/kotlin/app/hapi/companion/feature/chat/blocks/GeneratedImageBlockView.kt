@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +30,11 @@ import app.hapi.companion.feature.chat.LocalChatMedia
 import app.hapi.companion.ui.theme.hapi
 import app.hapi.protocol.chat.GeneratedImageBlock
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import coil.size.Size
+import app.hapi.companion.ui.components.ImageCopyAction
+import app.hapi.companion.ui.components.asClipboardImage
 
 /**
  * Hub-generated image (`/api/sessions/:id/generated-images/:imageId`), loaded
@@ -37,6 +45,7 @@ import coil.compose.AsyncImage
 @Composable
 fun GeneratedImageBlockView(block: GeneratedImageBlock, modifier: Modifier = Modifier) {
     val media = LocalChatMedia.current
+    val context = LocalContext.current
     val url = remember(block.imageId) { media.generatedImageUrl(block.imageId) }
     var viewerOpen by remember { mutableStateOf(false) }
 
@@ -81,6 +90,14 @@ fun GeneratedImageBlockView(block: GeneratedImageBlock, modifier: Modifier = Mod
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize().padding(8.dp),
                 )
+                Surface(modifier = Modifier.align(Alignment.TopEnd).padding(12.dp), shape = RoundedCornerShape(12.dp)) {
+                    ImageCopyAction(block.imageId) {
+                        val result = media.imageLoader.execute(ImageRequest.Builder(context).data(url)
+                            .size(Size.ORIGINAL).allowHardware(false).build())
+                        require(result is SuccessResult)
+                        result.drawable.toBitmap().asClipboardImage()
+                    }
+                }
             }
         }
     }

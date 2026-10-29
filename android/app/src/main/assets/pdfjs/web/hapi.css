@@ -1,0 +1,13 @@
+/* HAPI reading surface: keep document navigation, search and original download. */
+/* Android WebView can resolve the root's percentage height against zero. */
+html, body { width: 100%; height: 100vh; height: 100dvh; overflow: hidden; }
+:root { --toolbar-bg-color: #f5f2fa; --body-bg-color: #e6e1e9; }
+#editorModeButtons, #editorModeSeparator, #secondaryOpenFile, #secondaryPrint,
+#presentationMode, #viewsManagerAddFileButton, #viewsManagerStatusBar,
+#secondaryToolbarButtonContainer > .horizontalToolbarSeparator:first-of-type {
+  display: none !important;
+}
+#toolbarContainer { border-bottom: 1px solid #d5cedd; }
+@media (prefers-color-scheme: dark) {
+  :root { --toolbar-bg-color: #27232d; --body-bg-color: #17141c; }
+}

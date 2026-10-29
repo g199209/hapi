@@ -51,6 +51,8 @@ import app.hapi.companion.R
 import app.hapi.companion.feature.chat.rememberChatLinkHandler
 import app.hapi.companion.feature.chat.PagedTextContent
 import app.hapi.companion.ui.components.DiffView
+import app.hapi.companion.ui.components.ImageCopyAction
+import app.hapi.companion.ui.components.ClipboardImage
 import app.hapi.companion.ui.components.ZoomableImage
 import app.hapi.companion.ui.components.rememberImageZoomState
 import app.hapi.companion.ui.markdown.CodeBlock
@@ -116,6 +118,9 @@ fun FileViewerScreen(
                     }
                 },
                 actions = {
+                    (state.content as? FileContentUiState.Image)?.let { image ->
+                        ImageCopyAction(image) { ClipboardImage(image.bytes, image.mimeType) }
+                    }
                     IconButton(onClick = viewModel::refresh) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.files_refresh))
                     }
@@ -146,6 +151,13 @@ fun FileViewerScreen(
                 )
             } else if (image != null && state.mode == ViewerMode.FILE) {
                 ImageContent(image, state.fileName, state.path, Modifier.fillMaxWidth().weight(1f))
+            } else if (state.content is FileContentUiState.Pdf && state.mode == ViewerMode.FILE) {
+                PdfFilePreview(
+                    content = state.content as FileContentUiState.Pdf,
+                    path = state.path,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    onOpenUrl = { linkHandler.onUrl(it, HrefPolicy.classify(it)) },
+                )
             } else Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -285,6 +297,7 @@ private fun FileContent(state: FileViewerUiState) {
         FileContentUiState.Empty -> HintBlock(stringResource(R.string.files_viewer_empty))
         FileContentUiState.Binary -> HintBlock(stringResource(R.string.files_viewer_binary))
         is FileContentUiState.Image -> Unit // Images own the bounded viewport above.
+        is FileContentUiState.Pdf -> Unit // PDFs own the paged viewport above.
         is FileContentUiState.Text ->
             if (content.isMarkdown && state.markdownPreview) {
                 Markdown(text = content.text, modifier = Modifier.fillMaxWidth())

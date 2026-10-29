@@ -17,6 +17,10 @@ import app.hapi.companion.R
 import app.hapi.companion.feature.chat.LocalChatMedia
 import app.hapi.companion.ui.components.ZoomableImage
 import app.hapi.companion.ui.components.ImageZoomState
+import app.hapi.companion.ui.components.ImageCopyAction
+import app.hapi.companion.ui.components.ClipboardImage
+import app.hapi.companion.ui.components.asClipboardImage
+import androidx.compose.ui.graphics.asAndroidBitmap
 import app.hapi.protocol.chat.ChatAttachment
 import java.util.Base64
 import kotlin.coroutines.cancellation.CancellationException
@@ -46,12 +50,13 @@ internal fun AttachmentImageViewer(attachment: ChatAttachment, zoom: ImageZoomSt
         value = PreviewImage.Loading
         value = try {
             val response = reader?.invoke(attachment.path)
-            val bitmap = if (response?.success == true && !response.content.isNullOrEmpty()) {
+            val ready = if (response?.success == true && !response.content.isNullOrEmpty()) {
                 withContext(Dispatchers.Default) {
-                    decodeAttachmentImage(Base64.getMimeDecoder().decode(response.content))
+                    val bytes = Base64.getMimeDecoder().decode(response.content)
+                    decodeAttachmentImage(bytes)?.let { PreviewImage.Ready(it, bytes) }
                 }
             } else null
-            bitmap?.let(PreviewImage::Ready) ?: PreviewImage.Unavailable
+            ready ?: PreviewImage.Unavailable
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -71,6 +76,13 @@ internal fun AttachmentImageViewer(attachment: ChatAttachment, zoom: ImageZoomSt
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, stringResource(R.string.image_close_preview))
+                        }
+                    },
+                    actions = {
+                        ImageCopyAction(attachment.path, enabled = bitmap != null && original != PreviewImage.Loading) {
+                            val bytes = (original as? PreviewImage.Ready)?.originalBytes
+                            if (bytes != null) ClipboardImage(bytes, attachment.mimeType)
+                            else requireNotNull(bitmap).asAndroidBitmap().asClipboardImage()
                         }
                     },
                 )

@@ -234,12 +234,12 @@ object MarkdownTransforms {
      * Extensions that autolink to the session file viewer. Intentionally
      * allowlisted (not "any dotted word") so prose like `example.org` or version
      * numbers never become dead file links; TLD lookalikes (org/com/io/dev/co)
-     * are deliberately excluded. Mirrors `COMMON_FILE_EXTENSIONS` on the web.
+     * are deliberately excluded. Uses the web extension set plus native PDF reading.
      */
     val COMMON_FILE_EXTENSIONS: Set<String> = setOf(
         "adoc", "astro", "avif", "bat", "bmp", "c", "cfg", "cjs", "conf", "cpp", "css", "csv",
         "env", "gif", "go", "gql", "gradle", "graphql", "h", "hpp", "htm", "html", "ico", "ini", "java",
-        "jpeg", "jpg", "js", "json", "jsx", "kt", "lock", "md", "mdx", "mjs", "mmd", "php", "png",
+        "jpeg", "jpg", "js", "json", "jsx", "kt", "lock", "md", "mdx", "mjs", "mmd", "pdf", "php", "png",
         "prisma", "properties", "proto", "ps1", "puml", "py", "rb", "rs", "rst", "scss", "sh",
         "sql", "svelte", "svg", "swift", "tex", "toml", "ts", "tsv", "tsx", "txt", "vue", "webp",
         "xml", "yaml", "yml", "zsh",

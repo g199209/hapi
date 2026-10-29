@@ -599,7 +599,7 @@ private fun AnnotatedString.Builder.appendInlineNode(node: Node, ctx: InlineCont
         }
         is Code -> appendInlineCode(node.literal.orEmpty(), ctx, insideLink)
         is Link -> if (insideLink) appendInlineChildren(node, ctx, true) else appendLink(node, ctx)
-        is Image -> appendImageFallback(node, ctx)
+        is Image -> if (insideLink) appendInlineChildren(node, ctx, true) else appendImageFallback(node, ctx)
         is HtmlInline -> append(node.literal.orEmpty())
         else -> appendInlineChildren(node, ctx, insideLink)
     }
@@ -657,22 +657,30 @@ private fun AnnotatedString.Builder.appendLink(node: Link, ctx: InlineContext) {
     val isAutolink = onlyChild is MdText && onlyChild.next == null && onlyChild.literal == destination
     if (isAutolink) {
         val split = MarkdownTransforms.stripCjkAutolinkArtifacts(destination)
-        appendClassifiedLink(split.url, ctx) { append(split.url) }
+        appendFileOrUrlLink(split.url, ctx) { append(split.url) }
         if (split.trailing.isNotEmpty()) append(split.trailing)
         return
     }
 
-    // Explicit [label](relative/file.ext) → session file viewer.
+    appendFileOrUrlLink(destination, ctx) { appendInlineChildren(node, ctx, insideLink = true) }
+}
+
+/** Explicit links and image destinations use the same session-file routing. */
+private fun AnnotatedString.Builder.appendFileOrUrlLink(
+    destination: String,
+    ctx: InlineContext,
+    content: AnnotatedString.Builder.() -> Unit,
+) {
     val filePath = MarkdownTransforms.rewriteExplicitLinkTarget(destination)
     if (filePath != null) {
         val listener = LinkInteractionListener { ctx.handler.onFilePath(filePath, null) }
         withLink(LinkAnnotation.Clickable("hapi-file:$filePath", ctx.linkStyles, listener)) {
-            appendInlineChildren(node, ctx, insideLink = true)
+            content()
         }
         return
     }
 
-    appendClassifiedLink(destination, ctx) { appendInlineChildren(node, ctx, insideLink = true) }
+    appendClassifiedLink(destination, ctx, content)
 }
 
 /** Apply [HrefPolicy]: blocked → inert hint text; otherwise clickable via the handler. */
@@ -690,10 +698,10 @@ private fun AnnotatedString.Builder.appendClassifiedLink(
     }
 }
 
-/** No inline image loading in the markdown pass (M2 wires Coil): alt text as a link. */
+/** Image alt text opens the original on the session machine, or an external URL. */
 private fun AnnotatedString.Builder.appendImageFallback(node: Image, ctx: InlineContext) {
     val destination = node.destination.orEmpty()
-    appendClassifiedLink(destination, ctx) {
+    appendFileOrUrlLink(destination, ctx) {
         if (node.firstChild != null) appendInlineChildren(node, ctx, insideLink = true) else append(destination)
     }
 }

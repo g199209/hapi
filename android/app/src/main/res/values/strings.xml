@@ -640,4 +640,9 @@
     <string name="image_close_preview">Close image</string>
     <string name="image_preview_fallback">Original unavailable · Showing preview</string>
     <string name="image_load_failed">Could not load image</string>
+    <string name="files_pdf_failed">Could not preview this PDF</string>
+    <string name="files_pdf_save_failed">Could not save this PDF</string>
+    <string name="image_copy">Copy image</string>
+    <string name="image_copied">Image copied</string>
+    <string name="image_copy_failed">Could not copy image</string>
 </resources>

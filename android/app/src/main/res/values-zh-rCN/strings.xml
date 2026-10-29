@@ -647,4 +647,9 @@
     <string name="image_close_preview">关闭图片</string>
     <string name="image_preview_fallback">原图不可用 · 当前显示预览图</string>
     <string name="image_load_failed">无法加载图片</string>
+    <string name="files_pdf_failed">无法预览这个 PDF</string>
+    <string name="files_pdf_save_failed">无法保存这个 PDF</string>
+    <string name="image_copy">复制图片</string>
+    <string name="image_copied">已复制图片</string>
+    <string name="image_copy_failed">无法复制图片</string>
 </resources>

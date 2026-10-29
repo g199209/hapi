@@ -47,6 +47,20 @@ class FileViewerViewModelTest {
     """.trimIndent()
 
     @Test
+    fun `PDF bytes bypass text decoding and open in file mode`() = runTest {
+        val bytes = "%PDF-1.4\n".toByteArray() + byteArrayOf(0, 1, 2)
+        val gateway = FakeFilesGateway().apply {
+            diffFileResult = GitCommandResponse(success = true, stdout = sampleDiff)
+            readFileResult = FileReadResponse(true, content = Base64.getEncoder().encodeToString(bytes))
+        }
+        val model = buildViewModel(gateway, path = "/home/a/reports/key_charts.PDF")
+        model.start(); advanceUntilIdle()
+        val pdf = assertIs<FileContentUiState.Pdf>(model.state.value.content)
+        assertTrue(bytes.contentEquals(pdf.bytes))
+        assertEquals(ViewerMode.FILE, model.state.value.mode)
+    }
+
+    @Test
     fun `absolute HTML reports default to preview and preserve source`() = runTest {
         val html = "<!doctype html><h1>中文 report</h1>"
         val gateway = FakeFilesGateway().apply {

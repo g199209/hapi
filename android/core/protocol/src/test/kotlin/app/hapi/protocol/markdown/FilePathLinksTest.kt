@@ -128,6 +128,14 @@ class FilePathLinksTest {
     // ── rewriteExplicitLinkTarget ────────────────────────────────────────────
 
     @Test
+    fun `PDF reports are file citations in prose and explicit links`() {
+        val path = "/home/mingfei/.codex/worktrees/09d4/Arbistrix/build.dev/key_charts.pdf"
+        assertEquals(path, MarkdownTransforms.rewriteExplicitLinkTarget(path))
+        assertEquals("reports/key charts.PDF", MarkdownTransforms.rewriteExplicitLinkTarget("reports/key%20charts.PDF#page=2"))
+        assertEquals("key_charts.pdf", MarkdownTransforms.detectFilePathLinks("下载 key_charts.pdf。").single().path)
+    }
+
+    @Test
     fun `rewrites repo-relative link targets`() {
         assertEquals("docs/guide.md", MarkdownTransforms.rewriteExplicitLinkTarget("docs/guide.md#install"))
         assertEquals("src/a.ts", MarkdownTransforms.rewriteExplicitLinkTarget("src/a.ts:12"))

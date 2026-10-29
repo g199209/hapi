@@ -15,7 +15,7 @@ sealed interface PreviewImage {
     /** Decode still running — render a neutral placeholder. */
     data object Loading : PreviewImage
 
-    data class Ready(val bitmap: ImageBitmap) : PreviewImage
+    data class Ready(val bitmap: ImageBitmap, val originalBytes: ByteArray? = null) : PreviewImage
 
     /** Not a data URL / undecodable — fall back to the filename chip. */
     data object Unavailable : PreviewImage

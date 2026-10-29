@@ -25,4 +25,9 @@
     <string name="sessions_action_copy_reference">Копировать session reference</string>
     <string name="composer_no_matches">Нет совпадений</string>
     <string name="feature_cancel">Отмена</string>
+    <string name="files_pdf_failed">Не удалось открыть PDF</string>
+    <string name="files_pdf_save_failed">Не удалось сохранить PDF</string>
+    <string name="image_copy">Копировать изображение</string>
+    <string name="image_copied">Изображение скопировано</string>
+    <string name="image_copy_failed">Не удалось скопировать изображение</string>
 </resources>

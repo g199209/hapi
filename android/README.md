@@ -74,6 +74,20 @@ anchor.
   pinch zoom, double-tap zoom/fit, bounded panning and a Fit to screen action.
   Zoom and the focal point survive rotation. Original raster bytes decode off
   the main thread; the file toolbar remains available while zoomed.
+- **Copy image:** file images, sent attachment previews and generated-image
+  viewers offer a Copy image action. File and attachment originals retain their
+  encoded bytes; unavailable originals copy the displayed preview. Generated
+  images load at original resolution and copy as PNG. The Android clipboard
+  carries an image MIME type and a readable FileProvider URI, so image-capable
+  apps can paste after leaving the viewer. Cached copies remain immutable;
+  day-old files expire after a successful replacement.
+- **Report links:** Markdown image destinations use the same session-file
+  routing as ordinary links; tapping their alt text opens the original image
+  with zoom/pan. PDF citations open the packaged Mozilla PDF.js reader with
+  selectable text, find, continuous pages, zoom with document re-rendering and
+  original PDF download through Android's document picker. Page/zoom/position
+  survive rotation. Viewer assets and fonts ship in the APK; the browser only
+  receives the current document and has no Hub credentials or file access.
 - **User images:** tap a sent image thumbnail (or its filename if no thumbnail
   is available) to open a full-screen zoom/pan viewer. It reads the original
   through the session's file API only when opened, keeping the stored preview
