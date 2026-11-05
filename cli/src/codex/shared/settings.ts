@@ -17,7 +17,11 @@ export function settingsMatch(actual: Record<string, unknown>, expected: Record<
 
 /** Never silently convert a named/external sandbox into workspace-write. */
 export function inheritedSandbox(settings: Record<string, unknown>): Record<string, unknown> {
-    if (settings.activePermissionProfile) throw new Error('Create this conversation in the native TUI: named permission profile inheritance is not supported');
+    if (settings.activePermissionProfile) {
+        const id = record(settings.activePermissionProfile).id;
+        if (typeof id !== 'string' || !id.trim()) throw new Error('Cannot inherit a named permission profile without its id');
+        return { permissions: id };
+    }
     const sandbox = record(settings.sandboxPolicy ?? settings.sandbox);
     if (!sandbox.type) return {};
     if (sandbox.type === 'dangerFullAccess') return { sandbox: 'danger-full-access' };

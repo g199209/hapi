@@ -57,6 +57,12 @@ function createGateway(reply?: unknown) {
 }
 
 describe('RpcGateway RPC timeouts', () => {
+    it('preserves native fork errors instead of reporting a missing session id', async () => {
+        const { gateway } = createGateway({ error: 'Cannot inherit a named permission profile without its id' })
+        await expect(gateway.forkConversation('session-1', {})).rejects.toThrow('Cannot inherit a named permission profile without its id')
+        const success = createGateway({ nativeSessionId: 'native-child', sessionId: 'child' })
+        expect(await success.gateway.forkConversation('session-1', {})).toEqual({ nativeSessionId: 'native-child', sessionId: 'child' })
+    })
     it('preserves Runner worktree identity through path checks and Codex history schemas', async () => {
         const paths = createGateway({ exists: { '/feature': true }, worktreeBasePaths: { '/feature': '/main' } })
         expect(await paths.gateway.checkPathsExist('machine', ['/feature'])).toEqual({

@@ -57,7 +57,7 @@ afterEach(async () => {
     finally { vi.useRealTimers(); }
 });
 
-async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) {
+async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end']; create?: RootHost['create'] }) {
     const directory = await mkdtemp('/tmp/hapi-shared-root-');
     let state: AgentState = { steeringActive: true };
     let metadata: Metadata = { path: directory, host: 'test', flavor: 'codex' };
@@ -86,7 +86,7 @@ async function fixture(opts?: { hubArchived?: boolean; end?: RootHost['end'] }) 
     const end = opts?.end ?? (async () => { throw new Error('Unexpected root archive'); });
     const root = new SharedCodexRoot({ session, workingDirectory: directory } as SessionBootstrapResult, {
         directory, generation: 'test', endpoint: 'mock', settingsFor: () => undefined,
-        create: async () => { throw new Error('Unexpected root creation'); },
+        create: opts?.create ?? (async () => { throw new Error('Unexpected root creation'); }),
         end
     } satisfies RootHost);
     cleanups.push(async () => { await root.close(false); await rm(directory, { recursive: true, force: true }); });
@@ -498,4 +498,23 @@ it('leaves a rejected async answer actionable without publishing a user message'
     expect(f.state().completedRequests?.[id]).toBeUndefined();
     expect(f.userMessages).not.toHaveBeenCalled();
     expect(request.mock.calls.map(([method]) => method)).toEqual(['turn/start']);
+});
+
+it('forks and clears named-profile roots without replacing their permissions or workspace roots', async () => {
+    const initialSettings = vi.fn(async () => {});
+    const child = { threadId: 'native-child', session: { sessionId: 'hapi-child' }, initialSettings } as unknown as SharedCodexRoot;
+    const create = vi.fn(async () => child);
+    const f = await fixture({ create });
+    const roots = { paths: ['/project', '/shared'] };
+    f.root.acceptSettings({ model: 'mock', activePermissionProfile: { id: 'restricted', extends: ':workspace' },
+        sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/project'] }, runtimeWorkspaceRoots: roots });
+    await f.root.activate();
+    expect(await f.rpc.get(RPC_METHODS.ForkConversation)!({})).toEqual({ nativeSessionId: 'native-child', sessionId: 'hapi-child' });
+    expect(await f.rpc.get(RPC_METHODS.ClearConversation)!({})).toEqual({ sessionId: 'hapi-child' });
+    expect(create.mock.calls[0]).toMatchObject(['thread/fork', { threadId: 'thread', permissions: 'restricted', runtimeWorkspaceRoots: roots }, f.root]);
+    expect(create.mock.calls[1]).toMatchObject(['thread/start', { permissions: 'restricted', runtimeWorkspaceRoots: roots }]);
+    for (const [, params] of create.mock.calls as unknown as Array<[string, Record<string, unknown>]>) {
+        expect(params).not.toHaveProperty('sandbox');
+        expect(params.config).not.toHaveProperty('sandbox_workspace_write.writable_roots');
+    }
 });

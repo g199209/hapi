@@ -577,12 +577,16 @@ export class RpcGateway {
         sessionId: string,
         params: { messageLocalId?: string }
     ): Promise<import('@hapi/protocol/apiTypes').ForkConversationRpcResult> {
-        return await this.sessionRpc(
+        const result = await this.sessionRpc(
             sessionId,
             RPC_METHODS.ForkConversation,
             params,
             120_000
-        ) as import('@hapi/protocol/apiTypes').ForkConversationRpcResult
+        )
+        if (result && typeof result === 'object' && 'error' in result && typeof result.error === 'string') {
+            throw new Error(result.error)
+        }
+        return result as import('@hapi/protocol/apiTypes').ForkConversationRpcResult
     }
 
     async clearConversation(sessionId: string): Promise<{ sessionId: string }> {

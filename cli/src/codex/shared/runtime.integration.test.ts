@@ -56,6 +56,67 @@ vi.mock('../utils/buildHapiMcpBridge', () => ({ buildHapiMcpBridge: async () => 
 // Explicit opt-in: installed official binary, entirely isolated CODEX_HOME, mock Responses API only.
 describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Codex shared runtime', () => {
     afterEach(() => { vi.unstubAllEnvs(); state.sessions.clear(); state.beforeBootstrap = undefined; });
+    it('forks an external named-profile thread with its history and permissions intact', async () => {
+        const home = await mkdtemp('/tmp/hapi-named-fork-'); state.home = home;
+        const ch = join(home, 'codex'), cwd = join(home, 'work'); await mkdir(ch); await mkdir(cwd);
+        let requests = 0;
+        const http = createServer((request, response) => {
+            request.resume(); request.on('end', () => {
+                requests++;
+                const id = randomUUID();
+                const events = [{ type: 'response.created', response: { id } },
+                    { type: 'response.output_item.done', item: { type: 'message', role: 'assistant', id: `msg_${id}`, content: [{ type: 'output_text', text: 'NAMED PROFILE ANSWER' }] } },
+                    { type: 'response.completed', response: { id, usage: { input_tokens: 12, output_tokens: 3, total_tokens: 15 } } }];
+                response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+                response.end(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''));
+            });
+        });
+        await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
+        const port = (http.address() as { port: number }).port;
+        await writeFile(join(ch, 'config.toml'), `model = "mock-model"\nmodel_provider = "mock"\napproval_policy = "never"\nsandbox_mode = "read-only"\n[model_providers.mock]\nname = "Mock"\nbase_url = "http://127.0.0.1:${port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\n[analytics]\nenabled = false\n[feedback]\nenabled = false\n[projects."${cwd}"]\ntrust_level = "trusted"\n`);
+        vi.stubEnv('CODEX_HOME', ch);
+        const endpoint = `unix://${join(home, 'desktop.sock')}`;
+        const { resolveSharedCodex } = await import('./launch'); const command = resolveSharedCodex();
+        const engine = spawn(command.command, [...command.args, 'app-server', '--listen', endpoint], { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+        engine.stdout?.resume(); engine.stderr?.resume();
+        const owner = new CodexAppServerClient({ endpoint });
+        const abort = new AbortController(); let running: Promise<void> | undefined;
+        try {
+            await vi.waitFor(async () => { await owner.connect(); await initializeSharedClient(owner); }, { timeout: 10_000 });
+            const profiles = record(await owner.request('permissionProfile/list', { cwd })).data as Array<{ id: string }>;
+            const permissions = profiles.find(p => p.id.includes('read'))?.id;
+            expect(permissions, JSON.stringify(profiles)).toBeTypeOf('string');
+            const started = record(await owner.request('thread/start', { cwd, model: 'mock-model', permissions, approvalPolicy: 'never' }));
+            const threadId = String(record(started.thread).id);
+            await owner.request('turn/start', { threadId, input: [{ type: 'text', text: 'NAMED PROFILE PROMPT', text_elements: [] }] });
+            await vi.waitFor(async () => expect(JSON.stringify(await owner.request('thread/turns/list', { threadId, itemsView: 'full' }))).toContain('NAMED PROFILE ANSWER'), { timeout: 15_000 });
+            const original = record(await owner.request('thread/resume', { threadId }));
+            expect(record(original.activePermissionProfile).id).toBe(permissions);
+            const { runSharedRuntime } = await import('./runtime');
+            let ready!: (value: import('./runtime').RuntimeReady) => void;
+            const readiness = new Promise<import('./runtime').RuntimeReady>(resolve => { ready = resolve; });
+            running = runSharedRuntime({ workingDirectory: cwd, appServerEndpoint: endpoint, resumeSessionId: threadId }, ready, abort.signal);
+            const attached = await Promise.race([readiness, running.then(() => { throw new Error('Stopped before ready'); })]);
+            const web = state.sessions.get(attached.sessionId)!;
+            const fork = record(await web.rpc.get(RPC_METHODS.ForkConversation)!({}));
+            expect(fork.nativeSessionId).not.toBe(threadId); expect(fork.sessionId).toBeTypeOf('string');
+            const child = record(await owner.request('thread/resume', { threadId: fork.nativeSessionId }));
+            for (const key of ['activePermissionProfile', 'sandbox', 'approvalPolicy', 'approvalsReviewer', 'model', 'reasoningEffort', 'runtimeWorkspaceRoots']) {
+                expect(child[key], key).toEqual(original[key]);
+            }
+            const history = JSON.stringify(await owner.request('thread/turns/list', { threadId: fork.nativeSessionId, itemsView: 'full' }));
+            expect(history).toContain('NAMED PROFILE PROMPT'); expect(history).toContain('NAMED PROFILE ANSWER');
+            const cleared = record(await web.rpc.get(RPC_METHODS.ClearConversation)!({}));
+            const newRoot = state.sessions.get(String(cleared.sessionId))!;
+            const fresh = record(await owner.request('thread/resume', { threadId: newRoot.metadata.codexSessionId }));
+            expect(fresh.activePermissionProfile).toEqual(original.activePermissionProfile);
+            expect(requests).toBe(1); expect(engine.exitCode).toBeNull();
+        } finally {
+            abort.abort(); await running?.catch(() => {}); await owner.disconnect();
+            engine.kill('SIGTERM'); await new Promise<void>(resolve => engine.once('exit', () => resolve()));
+            await new Promise<void>(resolve => http.close(() => resolve())); await rm(home, { recursive: true, force: true });
+        }
+    }, 60_000);
     it('injects async answers into the active turn ahead of ordinary queued prompts', async () => {
         const home = await mkdtemp('/tmp/hapi-native-async-'); state.home = home;
         const ch = join(home, 'codex'), cwd = join(home, 'work'); await mkdir(ch); await mkdir(cwd);

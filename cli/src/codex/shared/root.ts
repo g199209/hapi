@@ -596,6 +596,7 @@ export class SharedCodexRoot {
     freshParams(): Record<string, unknown> {
         const sandbox = inheritedSandbox(this.settingsNative);
         return { ...sandbox, cwd: this.settingsNative.cwd ?? this.bootstrap.workingDirectory, model: this.settingsNative.model, modelProvider: this.settingsNative.modelProvider,
+            ...('runtimeWorkspaceRoots' in this.settingsNative ? { runtimeWorkspaceRoots: this.settingsNative.runtimeWorkspaceRoots } : {}),
             approvalPolicy: this.settingsNative.approvalPolicy, serviceTier: this.settingsNative.serviceTier,
             approvalsReviewer: this.settingsNative.approvalsReviewer, personality: this.settingsNative.personality,
             developerInstructions: getCodexSystemPrompt(),
