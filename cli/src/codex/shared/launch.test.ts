@@ -5,13 +5,19 @@ import { resolveCodexPermissionModeConfig } from '../utils/permissionModeConfig'
 
 describe('shared launch configuration', () => {
     afterEach(() => vi.unstubAllEnvs());
-    it('requires explicit external endpoint opt-in and validates Unix socket URLs', () => {
+    it('requires explicit external endpoint opt-in and validates local transports', () => {
         vi.stubEnv('HAPI_CODEX_APP_SERVER_ENDPOINT', undefined);
         expect(externalAppServerEndpoint({})).toBeUndefined();
         vi.stubEnv('HAPI_CODEX_APP_SERVER_ENDPOINT', 'unix:///tmp/desktop.sock');
         expect(externalAppServerEndpoint({})).toBe('unix:///tmp/desktop.sock');
         expect(externalAppServerEndpoint({ appServerEndpoint: 'unix:///tmp/explicit.sock' })).toBe('unix:///tmp/explicit.sock');
-        for (const appServerEndpoint of ['', 'unix://', 'unix://relative', 'ws://localhost:1234']) {
+        for (const appServerEndpoint of ['ws://127.0.0.1:4513', 'ws://[::1]:4513/rpc']) {
+            expect(externalAppServerEndpoint({ appServerEndpoint })).toBe(appServerEndpoint);
+        }
+        for (const appServerEndpoint of ['', 'unix://', 'unix://relative', 'ws://localhost:1234',
+            'ws://0.0.0.0:4513', 'ws://192.168.1.2:4513', 'ws://127.0.0.1',
+            'ws://user:secret@127.0.0.1:4513', 'ws://127.0.0.1:4513/?token=secret',
+            'ws://127.0.0.1:4513/#fragment', 'wss://example.com:443', 'stdio://']) {
             expect(() => externalAppServerEndpoint({ appServerEndpoint })).toThrow('absolute unix:///path');
         }
         for (const codexArgs of [['-c', 'key=true'], ['--enable=feature'], ['--disable', 'feature'], ['--strict-config']]) {

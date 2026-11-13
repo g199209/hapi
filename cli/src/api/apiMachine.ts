@@ -1,4 +1,5 @@
 import { renameInactiveCodexThread } from '@/codex/shared/title'
+import { listWindowsSharedCodexSessions, archiveWindowsSharedCodexSession } from '@/codex/shared/history'
 /**
  * WebSocket client for machine/runner communication with hapi-hub
  */
@@ -355,9 +356,10 @@ export class ApiMachineClient {
                 const requestedIds = parsed.data.sessionIds
                     ? new Set(parsed.data.sessionIds)
                     : null
-                const allSessions = requestedIds
+                const nativeSessions = await listWindowsSharedCodexSessions(requestedIds ?? undefined)
+                const allSessions = nativeSessions ?? (requestedIds
                     ? listLocalCodexSessionsWithMessagesByIds(requestedIds)
-                    : listLocalCodexSessionSummaries(Number.MAX_SAFE_INTEGER)
+                    : listLocalCodexSessionSummaries(Number.MAX_SAFE_INTEGER))
                 const allowedSessions = []
                 for (const session of allSessions) {
                     if (await this.isLocalSessionWithinWorkspaceRoots(session)) allowedSessions.push(session)
@@ -389,6 +391,8 @@ export class ApiMachineClient {
                 const parsed = ArchiveCodexSessionRpcRequestSchema.safeParse(params)
                 if (!parsed.success) return { success: false, error: 'Invalid Codex archive request' }
                 const sessionId = parsed.data.sessionId.trim()
+                const nativeResult = await archiveWindowsSharedCodexSession(sessionId, session => this.isLocalSessionWithinWorkspaceRoots(session))
+                if (nativeResult) return nativeResult
                 return await archiveLocalCodexSession(sessionId, {
                     canArchive: (session) => this.isLocalSessionWithinWorkspaceRoots(session)
                 })

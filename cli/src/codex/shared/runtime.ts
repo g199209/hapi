@@ -20,7 +20,7 @@ type Reservation = { root: SharedCodexRoot; resumeId?: string };
 
 function gitInfo(cwd: string): { sha: string | null; branch: string | null; originUrl: string | null } {
     const git = (...args: string[]) => {
-        try { return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 3_000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; }
+        try { return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 3_000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; }
         catch { return null; }
     };
     let originUrl = git('remote', 'get-url', 'origin');

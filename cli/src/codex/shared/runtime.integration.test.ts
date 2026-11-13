@@ -56,7 +56,7 @@ vi.mock('../utils/buildHapiMcpBridge', () => ({ buildHapiMcpBridge: async () => 
 // Explicit opt-in: installed official binary, entirely isolated CODEX_HOME, mock Responses API only.
 describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Codex shared runtime', () => {
     afterEach(() => { vi.unstubAllEnvs(); state.sessions.clear(); state.beforeBootstrap = undefined; });
-    it('forks an external named-profile thread with its history and permissions intact', async () => {
+    it.each(['unix', 'websocket'])('forks an external named-profile thread over %s with its history and permissions intact', async transport => {
         const home = await mkdtemp('/tmp/hapi-named-fork-'); state.home = home;
         const ch = join(home, 'codex'), cwd = join(home, 'work'); await mkdir(ch); await mkdir(cwd);
         let requests = 0;
@@ -75,7 +75,13 @@ describe.skipIf(process.env.HAPI_RUN_SHARED_CODEX_TESTS !== '1')('installed Code
         const port = (http.address() as { port: number }).port;
         await writeFile(join(ch, 'config.toml'), `model = "mock-model"\nmodel_provider = "mock"\napproval_policy = "never"\nsandbox_mode = "read-only"\n[model_providers.mock]\nname = "Mock"\nbase_url = "http://127.0.0.1:${port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\n[analytics]\nenabled = false\n[feedback]\nenabled = false\n[projects."${cwd}"]\ntrust_level = "trusted"\n`);
         vi.stubEnv('CODEX_HOME', ch);
-        const endpoint = `unix://${join(home, 'desktop.sock')}`;
+        let endpoint = `unix://${join(home, 'desktop.sock')}`;
+        if (transport === 'websocket') {
+            const portReservation = createServer();
+            await new Promise<void>(resolve => portReservation.listen(0, '127.0.0.1', resolve));
+            endpoint = `ws://127.0.0.1:${(portReservation.address() as { port: number }).port}`;
+            await new Promise<void>(resolve => portReservation.close(() => resolve()));
+        }
         const { resolveSharedCodex } = await import('./launch'); const command = resolveSharedCodex();
         const engine = spawn(command.command, [...command.args, 'app-server', '--listen', endpoint], { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
         engine.stdout?.resume(); engine.stderr?.resume();

@@ -16,7 +16,7 @@ export async function resolveGitRepositoryPaths(paths: string[]): Promise<Map<st
     const unique = [...new Set(paths.map(path => path.trim()).filter(Boolean))]
     const canonical = async (path: string) => realpath(path).catch(() => resolve(path))
     async function git(cwd: string, args: string[]) {
-        return (await exec('git', args, { cwd, timeout: 5_000, maxBuffer: 1024 * 1024,
+        return (await exec('git', args, { cwd, timeout: 5_000, maxBuffer: 1024 * 1024, windowsHide: true,
             env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } })).stdout
     }
     let index = 0

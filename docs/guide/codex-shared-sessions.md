@@ -29,9 +29,30 @@ native thread on every client, while other desktop threads and the daemon remain
 running. HAPI new sessions use the same daemon when this option is configured.
 
 Only selected/imported threads are mirrored into HAPI. Desktop-created new
-threads can be imported later; they are not all published automatically. This
-build supports local Unix socket endpoints; native Windows TCP endpoints are
-not part of this integration.
+threads can be imported later; they are not all published automatically.
+
+Native Windows Runners can use a shared loopback WebSocket app-server:
+
+```powershell
+$env:HAPI_CODEX_APP_SERVER_ENDPOINT = 'ws://127.0.0.1:4513'
+hapi runner start --workspace-root $HOME
+```
+
+The Windows desktop App must connect to the same app-server using
+`CODEX_APP_SERVER_WS_URL`. Its default stdio engine has no listener to attach
+to, so switch the App while its work is idle. Run the Runner natively on Windows
+with the same Windows `CODEX_HOME` and executable on PATH. Keep it as a separate
+machine from any WSL Runner. WebSocket external endpoints require an explicit
+port and numeric loopback address (`127.0.0.1` or `[::1]`), without URL credentials,
+query parameters, or fragments. They retain the same ownership, settings, and
+detach behavior as external Unix sockets.
+
+Windows shared history discovery uses native `thread/list` pagination rather
+than relying on JSONL files, which paginated threads may not materialize. Import
+matching reads actual user input without resuming a thread; the normal shared
+V2 projection remains the only history writer. Archive uses the native RPC.
+See `cli/scripts/windows` for the windowless node supervisor and the optional
+desktop App tools bridge.
 
 The lifecycle descriptions below refer to the default HAPI-owned engine mode;
 external daemon ownership and shutdown follow the rules above.

@@ -170,8 +170,14 @@ export async function initializeSharedClient(client: CodexAppServerClient, expec
 export function externalAppServerEndpoint(options: SharedLaunchOptions): string | undefined {
     const endpoint = options.appServerEndpoint ?? process.env.HAPI_CODEX_APP_SERVER_ENDPOINT;
     if (endpoint === undefined) return undefined;
-    if (!endpoint.startsWith('unix:///') || endpoint.length <= 'unix:///'.length) {
-        throw new Error('HAPI_CODEX_APP_SERVER_ENDPOINT / --app-server must be an absolute unix:///path socket URL');
+    let localWebSocket = false;
+    try {
+        const url = new URL(endpoint);
+        localWebSocket = url.protocol === 'ws:' && ['127.0.0.1', '[::1]'].includes(url.hostname)
+            && Boolean(url.port) && !url.username && !url.password && !url.search && !url.hash;
+    } catch { /* Unix socket URLs are validated below. */ }
+    if (!(endpoint.startsWith('unix:///') && endpoint.length > 'unix:///'.length) && !localWebSocket) {
+        throw new Error('HAPI_CODEX_APP_SERVER_ENDPOINT / --app-server must be an absolute unix:///path socket URL or a loopback ws://127.0.0.1:PORT / ws://[::1]:PORT URL');
     }
     const args = options.codexArgs ?? [];
     const delimiter = args.indexOf('--');
