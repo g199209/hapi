@@ -53,6 +53,30 @@ function reasoningTextOf(message: { content: unknown }): string {
 }
 
 describe('cli session handlers', () => {
+    it('skips committed projection replay while applying a changed native position', () => {
+        const store = new Store(':memory:')
+        const session = store.sessions.getOrCreateSession('projection-replay', {}, null, 'default')
+        const socket = new FakeSocket(), events: SyncEvent[] = []
+        registerSessionHandlers(socket as unknown as CliSocketWithData, {
+            store, resolveSessionAccess: () => ({ ok: true, value: session }), emitAccessError() {},
+            onWebappEvent: event => events.push(event)
+        })
+        const message = { sid: session.id, localId: 'native-item', projectedAt: 1000,
+            message: { role: 'user', content: { type: 'text', text: 'hello' } } }
+        socket.trigger('message', message)
+        events.length = 0
+        socket.roomEvents.length = 0
+        for (let i = 0; i < 1000; i++) socket.trigger('message', message)
+        expect(events).toHaveLength(0)
+        expect(socket.roomEvents).toHaveLength(0)
+        expect(store.messages.getAllMessages(session.id)).toHaveLength(1)
+        socket.trigger('message', { ...message, projectedAt: 2000 })
+        expect(events.some(event => event.type === 'messages-invalidated')).toBe(true)
+        expect(events.some(event => event.type === 'messages-consumed')).toBe(true)
+        expect(store.messages.getAllMessages(session.id)[0].invokedAt).toBe(2000)
+        store.close()
+    })
+
     it('keeps native item ordering across projection and repeated queue ACKs', () => {
         const store = new Store(':memory:');
         const session = store.sessions.getOrCreateSession('native-ack', { capabilities: { concurrentClients: true } }, null, 'default');

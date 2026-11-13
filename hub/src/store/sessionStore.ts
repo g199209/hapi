@@ -136,6 +136,13 @@ export class SessionStore {
         return getSession(this.db, id)
     }
 
+    getLastMessageAt(id: string): number {
+        const row = this.db.query<{ last_message_at: number }, [string]>(
+            'SELECT last_message_at FROM sessions WHERE id = ?'
+        ).get(id)
+        return row?.last_message_at ?? 0
+    }
+
     getSessionByNamespace(id: string, namespace: string): StoredSession | null {
         return getSessionByNamespace(this.db, id, namespace)
     }

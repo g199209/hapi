@@ -266,7 +266,7 @@ export class SessionCache {
 
     refreshMessageClock(sessionId: string): void {
         const session = this.sessions.get(sessionId)
-        const at = this.store.sessions.getSession(sessionId)?.lastMessageAt ?? 0
+        const at = this.store.sessions.getLastMessageAt(sessionId)
         if (!session || session.lastMessageAt === at) return
         session.lastMessageAt = at
         this.publisher.emit({ type: 'session-updated', sessionId, namespace: session.namespace,
@@ -277,7 +277,7 @@ export class SessionCache {
         const session = this.sessions.get(sessionId)
         if (!session) return
         const preview = latestMessagePreview(this.store, sessionId)
-        const lastMessageAt = this.store.sessions.getSession(sessionId)?.lastMessageAt ?? 0
+        const lastMessageAt = this.store.sessions.getLastMessageAt(sessionId)
         if (session.lastMessagePreview === preview && session.lastMessageAt === lastMessageAt) return
         session.lastMessagePreview = preview
         session.lastMessageAt = lastMessageAt

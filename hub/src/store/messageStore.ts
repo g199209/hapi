@@ -72,6 +72,14 @@ export class MessageStore {
         return addProjectedMessage(this.db, sessionId, content, localId, at)
     }
 
+    hasUnchangedProjectedMessage(sessionId: string, localId: string, at: number): boolean {
+        return this.db.query(
+            `SELECT 1 FROM messages
+             WHERE session_id = ? AND local_id = ? AND invoked_at = ?
+               AND scheduled_at IS NULL LIMIT 1`
+        ).get(sessionId, localId, at) !== null
+    }
+
     addImportedMessage(sessionId: string, content: unknown, localId: string, createdAt: number): { message: StoredMessage; inserted: boolean } {
         return addImportedMessage(this.db, sessionId, content, localId, createdAt)
     }

@@ -160,6 +160,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
 
+        // Reconnect replays durable native IDs. Already committed projections
+        // need no second broadcast or preview scan; changed positions still
+        // follow the normal epoch/invocation path below.
+        if (projectedAt !== undefined && localId
+            && store.messages.hasUnchangedProjectedMessage(sid, localId, projectedAt)) {
+            return
+        }
+
         const epoch = store.messages.getMessageEpoch(sid)
         const msg = projectedAt !== undefined && localId
             ? store.messages.addProjectedMessage(sid, content, localId, projectedAt)
