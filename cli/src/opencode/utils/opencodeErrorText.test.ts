@@ -25,6 +25,9 @@ describe('truncateOpencodeProviderText', () => {
 });
 
 describe('formatOpencodePromptError', () => {
+    it('shows the standard v2 authentication failure without exposing raw transport details', () => {
+        expect(formatOpencodePromptError(new Error('Authentication required: provider authentication required'))).toBe('OpenCode prompt failed: Authentication required: provider authentication required');
+    });
     it('states the provider reason the ACP transport already delivered', () => {
         const error = new Error('Internal error: Rate limit exceeded: free-models-per-day. Add credits to unlock 1000 free models.');
 

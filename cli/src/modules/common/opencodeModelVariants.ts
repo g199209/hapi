@@ -1,5 +1,7 @@
 import { isObject } from '@hapi/protocol';
 import type { OpencodeModelVariantsResponse } from '@hapi/protocol/apiTypes';
+import { opencodeUsesEmbeddedHttpApi, readOpencodeV2Models } from '@/opencode/utils/opencodeExecutable';
+import { getAgentLaunchCommand } from '@/agent/agentLaunchCommand';
 
 export type ListOpencodeModelVariantsResponse = OpencodeModelVariantsResponse;
 
@@ -12,6 +14,15 @@ const POLL_INTERVAL_MS = 300;
  * variant are collected; malformed entries are skipped defensively.
  */
 export function parseOpencodeProviderVariants(payload: unknown): Record<string, string[]> {
+    if (isObject(payload) && Array.isArray(payload.data)) {
+        const variants: Record<string, string[]> = {};
+        for (const model of payload.data) {
+            if (!isObject(model) || typeof model.id !== 'string' || typeof model.providerID !== 'string' || !Array.isArray(model.variants)) continue;
+            const ids = model.variants.filter(isObject).map(v => v.id).filter((v): v is string => typeof v === 'string' && v.length > 0);
+            if (ids.length) variants[`${model.providerID}/${model.id}`] = ids;
+        }
+        return variants;
+    }
     if (!isObject(payload) || !Array.isArray(payload.all)) {
         return {};
     }
@@ -169,6 +180,10 @@ export function listOpencodeModelVariants(request?: { cwd?: string | null }): Pr
 }
 
 async function listOpencodeModelVariantsUncached(cwd: string | null): Promise<ListOpencodeModelVariantsResponse> {
+    if (!await opencodeUsesEmbeddedHttpApi()) {
+        try { return { success: true, variants: parseOpencodeProviderVariants(await readOpencodeV2Models(cwd)) }; }
+        catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Failed to read OpenCode models' }; }
+    }
     // Prefer a live OpenCode session's server — its /provider catalog is
     // identical and answering from it skips any spawn entirely. Only servers
     // running in the same cwd are used: project-level opencode config can
@@ -230,7 +245,7 @@ async function spawnServeWithCatalog(cwd: string | null): Promise<
 
     let proc: ReturnType<typeof Bun.spawn> | null = null;
     try {
-        proc = Bun.spawn(['opencode', 'serve', '--port', String(port)], {
+        proc = Bun.spawn([getAgentLaunchCommand('opencode'), 'serve', '--port', String(port)], {
             stdout: 'ignore',
             stderr: 'ignore',
             ...(cwd ? { cwd } : {}),

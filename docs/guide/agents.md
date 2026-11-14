@@ -30,7 +30,7 @@ Gemini is no longer launchable: `hapi gemini` is kept as a tombstone command tha
 
 ### ACP
 
-Most remote integrations speak the [Agent Client Protocol](https://agentclientprotocol.com) (ACP) over stdio through a shared HAPI backend. ACP gives remote sessions bidirectional permission approval, plan/todo updates, question UI, model catalogs, and session resume via `session/load`. Cursor, Grok, Copilot, Kimi, OpenCode, and DeepSeek Harness remote sessions all run over ACP. DSH's official ACP server is intentionally automation-only and currently supports fresh sessions, committed assistant output, cancellation, and one-shot permissions; it does not provide native resume, model switching, MCP injection, or live tool/reasoning telemetry.
+Most remote integrations speak the [Agent Client Protocol](https://agentclientprotocol.com) (ACP) over stdio through a shared HAPI backend. ACP gives remote sessions bidirectional permission approval, plan/todo updates, question UI, model catalogs, and session resume via `session/load`. Cursor, Grok, Copilot, Kimi, OpenCode, and DeepSeek Harness remote sessions all run over ACP. HAPI's DSH adapter currently exposes fresh remote sessions with text, reasoning, tool updates, cancellation, and one-shot permissions; its provider and model are configured in the DSH ACP profile.
 
 ### Permission modes
 
@@ -255,32 +255,41 @@ If a remote session reports authentication failure, run `grok login --device-aut
 
 ## DeepSeek Harness
 
-`hapi dsh` uses the shared ACP transport and keeps DSH's runtime outside HAPI. The
-default executable is `dsh-acp-demo`; configure a different ACP server or a
-source checkout with `HAPI_DSH_ACP_COMMAND`, `HAPI_DSH_ACP_CONFIG`, or the JSON
-argument array `HAPI_DSH_ACP_ARGS_JSON`.
+`hapi dsh` uses the installed Harness CLI with `dsh --profile acp`. The current
+Harness distribution includes this profile; `dsh-acp-demo` is no longer needed.
+Make `dsh` discoverable on the Runner's PATH. Windows Desktop installations
+provide `resources/runtime/cli/bin/dsh.cmd`.
 
-The official demo is published as `@deepseek-ai/dsh-acp-demo`; use an exact
-version such as `0.1.0-rc.7` rather than npm's stale `latest` tag:
+The ACP profile has its own provider/model composition. Configure
+`$DSH_HOME/profiles/acp/cordis.patch.yml` with the same provider endpoint and
+model route used by your Web/Desktop profile. Credentials stay in the existing
+DSH store. A gateway key must use that gateway's endpoint.
 
-```bash
-npm install -g @deepseek-ai/dsh-acp-demo@0.1.0-rc.7
-```
-
-A published package still needs a DSH Cordis composition/config. A source
-checkout can be launched directly:
+`HAPI_DSH_ACP_CONFIG` optionally supplies an additional Cordis `--patch` file.
+For a custom server/profile, override the command and complete JSON argv:
 
 ```bash
-export HAPI_DSH_ACP_COMMAND=pnpm
-export HAPI_DSH_ACP_ARGS_JSON='["--dir", "/path/to/deepseek-harness", "run", "demo:acp"]'
+export HAPI_DSH_ACP_COMMAND=dsh
+export HAPI_DSH_ACP_ARGS_JSON='["--profile", "my-acp-profile"]'
 hapi dsh
 ```
 
-DSH sessions are remote-only and fresh-session-only. HAPI does not inject MCP
-servers or expose model/effort pickers because the official ACP contract leaves
-those surfaces to the DSH composition. Pending one-shot permission requests
-remain answerable in the standard HAPI UI, but the ACP composition owns the
-overall permission policy.
+HAPI's DSH adapter is remote-only and fresh-session-only. It currently uses the
+profile's tools and provider settings without injecting MCP servers or exposing
+model/effort pickers. Pending one-shot permission requests remain answerable in
+the standard HAPI UI; DSH owns the underlying permission policy.
+
+## OpenCode versions and Runner discovery
+
+OpenCode 2.x uses `opencode acp` and its managed service. HAPI omits the old
+`acp --cwd/--port/--hostname` flags, uses ACP for chat and slash commands, and
+reads model variants through the CLI's authenticated v2 API. Existing 1.x
+installations retain their embedded HTTP integration.
+
+The Runner inherits its service environment, rather than interactive shell
+profiles. Add `$HOME/.opencode/bin` to its PATH. `HAPI_OPENCODE_PATH` can select
+an explicit CLI for discovery, model catalogs, and launch, including a Windows
+Desktop-bundled CLI compatible with the current user configuration.
 
 ## Other agents
 

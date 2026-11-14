@@ -4,6 +4,8 @@ import { buildOpencodeEnv } from './config';
 import { getInvokedCwd } from '@/utils/invokedCwd';
 import { getAgentLaunchCommand } from '@/agent/agentLaunchCommand';
 
+export { opencodeUsesEmbeddedHttpApi } from './opencodeExecutable';
+
 function filterEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(env)) {
@@ -51,13 +53,15 @@ export function createOpencodeBackend(opts: {
     cwd?: string;
     port?: number;
     hostname?: string;
+    acpOnly?: boolean;
 }): AcpSdkBackend {
     const env = buildOpencodeEnv();
-    const args = ['acp', '--cwd', opts.cwd ?? getInvokedCwd()];
-    if (opts.port !== undefined) {
+    const cwd = opts.cwd ?? getInvokedCwd();
+    const args = opts.acpOnly ? ['acp'] : ['acp', '--cwd', cwd];
+    if (!opts.acpOnly && opts.port !== undefined) {
         args.push('--port', String(opts.port));
     }
-    if (opts.hostname !== undefined) {
+    if (!opts.acpOnly && opts.hostname !== undefined) {
         args.push('--hostname', opts.hostname);
     }
 
@@ -65,6 +69,8 @@ export function createOpencodeBackend(opts: {
         command: getAgentLaunchCommand('opencode'),
         args,
         env: filterEnv(env),
+        cwd,
+        gracefulExitTimeoutMs: opts.acpOnly ? 2_000 : 0,
         textChunkMode: 'delta',
         flavor: 'opencode',
     });

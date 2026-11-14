@@ -48,6 +48,12 @@ describe('createOpencodeBackend', () => {
         ]);
     });
 
+    it('uses standard ACP and process cwd for OpenCode v2 without legacy HTTP flags', () => {
+        createOpencodeBackend({ cwd: '/tmp/project', port: 5555, hostname: '127.0.0.1', acpOnly: true });
+        expect(constructorCalls[0]?.args).toEqual(['acp']);
+        expect(constructorCalls[0]).toMatchObject({ cwd: '/tmp/project' });
+    });
+
     it('omits --port/--hostname when not provided (backward compatible)', () => {
         createOpencodeBackend({ cwd: '/tmp/x' });
         expect(constructorCalls[0]?.args).toEqual(['acp', '--cwd', '/tmp/x']);

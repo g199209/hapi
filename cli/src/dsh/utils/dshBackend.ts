@@ -25,12 +25,12 @@ export function resolveDshAcpCommand(env: DshAcpEnvironment = process.env): {
     command: string
     args: string[]
 } {
-    const command = env.HAPI_DSH_ACP_COMMAND?.trim() || 'dsh-acp-demo'
+    const command = env.HAPI_DSH_ACP_COMMAND?.trim() || 'dsh'
     if (env.HAPI_DSH_ACP_ARGS_JSON?.trim()) {
         return { command, args: parseArgsJson(env.HAPI_DSH_ACP_ARGS_JSON.trim()) }
     }
     const config = env.HAPI_DSH_ACP_CONFIG?.trim()
-    return { command, args: config ? ['--config', config] : [] }
+    return { command, args: ['--profile', 'acp', ...(config ? ['--patch', config] : [])] }
 }
 
 export function createDshBackend(env: NodeJS.ProcessEnv = process.env): AcpSdkBackend {
@@ -39,6 +39,8 @@ export function createDshBackend(env: NodeJS.ProcessEnv = process.env): AcpSdkBa
         command,
         args,
         env: filterEnv(env),
+        textChunkMode: 'delta',
+        gracefulExitTimeoutMs: 2_000,
         flavor: 'dsh'
     })
 }

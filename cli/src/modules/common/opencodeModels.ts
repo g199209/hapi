@@ -4,6 +4,7 @@ import { AcpStdioTransport } from '@/agent/backends/acp/AcpStdioTransport';
 import packageJson from '../../../package.json';
 import { getErrorMessage } from './rpcResponses';
 import { getAgentLaunchCommand } from '@/agent/agentLaunchCommand';
+import { opencodeUsesEmbeddedHttpApi } from '@/opencode/utils/opencodeExecutable';
 
 export interface ListOpencodeModelsForCwdRequest {
     cwd?: string;
@@ -87,7 +88,9 @@ function extractModelsFromResponse(response: unknown): {
 async function runOpencodeProbe(cwd: string): Promise<ListOpencodeModelsForCwdResponse> {
     const transport = await AcpStdioTransport.create({
         command: getAgentLaunchCommand('opencode'),
-        args: ['acp']
+        args: ['acp'],
+        cwd,
+        gracefulExitTimeoutMs: await opencodeUsesEmbeddedHttpApi() ? 0 : 2_000
     });
 
     try {

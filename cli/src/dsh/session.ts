@@ -27,9 +27,8 @@ export class DshSession extends AgentSessionBase<DshMode> {
             mode: 'remote',
             sessionLabel: 'DshSession',
             sessionIdLabel: 'DeepSeek Harness ACP',
-            // The official ACP server supports fresh sessions only. Keep its
-            // process-local id out of HAPI metadata so inactive rows cannot
-            // advertise a resume path the server does not implement.
+            // HAPI's DSH adapter currently creates fresh sessions. Keep this
+            // ID out of resume metadata until native resume is wired here.
             applySessionIdToMetadata: (metadata) => metadata
         })
         this.startedBy = opts.startedBy

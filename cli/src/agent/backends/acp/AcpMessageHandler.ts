@@ -868,6 +868,11 @@ export class AcpMessageHandler {
             let output: unknown;
             if (update.rawOutput !== undefined) {
                 output = update.rawOutput;
+                if (isObject(output) && Object.keys(output).every(key => key === 'metadata')) {
+                    const normalized = normalizeAcpToolContent(update.content);
+                    if (typeof normalized === 'string' && normalized.length > 0) output = { ...output, stdout: normalized };
+                    else if (normalized && typeof normalized === 'object') output = { ...output, ...normalized };
+                }
             } else {
                 const normalized = normalizeAcpToolContent(update.content);
                 output = normalized !== null ? normalized : update.content;

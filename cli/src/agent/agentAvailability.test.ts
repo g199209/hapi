@@ -14,6 +14,12 @@ async function makeExecutable(directory: string, name: string): Promise<string> 
 }
 
 describe('agent executable resolution', () => {
+    it('uses the same explicit OpenCode binary for discovery and launch', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'hapi-opencode-path-'))
+        const executable = await makeExecutable(directory, 'opencode-current')
+        expect(getAgentLaunchCommand('opencode', { HAPI_OPENCODE_PATH: executable })).toBe(executable)
+        expect(getAgentAvailability('opencode', { HAPI_OPENCODE_PATH: executable, PATH: '' })).toEqual({ agent: 'opencode', available: true })
+    })
     it('resolves commands from PATH and absolute environment overrides', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'hapi-agent-path-'))
         const copilot = await makeExecutable(directory, 'copilot-custom')
@@ -91,7 +97,7 @@ describe('agent executable resolution', () => {
 
     it('rejects malformed or missing DSH static configuration', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'hapi-agent-path-'))
-        await makeExecutable(directory, 'dsh-acp-demo')
+        await makeExecutable(directory, 'dsh')
         expect(getAgentAvailability('dsh', {
             PATH: directory,
             HAPI_DSH_ACP_ARGS_JSON: 'not json',

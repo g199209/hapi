@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+vi.mock('@/opencode/utils/opencodeExecutable', () => ({ opencodeUsesEmbeddedHttpApi: vi.fn(async () => true) }))
 
 const sendRequestMock = vi.fn()
 const closeMock = vi.fn().mockResolvedValue(undefined)

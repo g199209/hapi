@@ -65,11 +65,12 @@ export type AcpStderrError = {
 };
 
 /** @internal Exported for regression tests. */
-export function buildAcpStdioSpawnOptions(env?: Record<string, string>): SpawnOptions {
+export function buildAcpStdioSpawnOptions(env?: Record<string, string>, cwd?: string, command?: string): SpawnOptions {
     return {
         env,
+        ...(cwd ? { cwd } : {}),
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: process.platform === 'win32',
+        shell: process.platform === 'win32' && !command?.toLowerCase().endsWith('.exe'),
         windowsHide: process.platform === 'win32'
     };
 }
@@ -112,6 +113,8 @@ export class AcpStdioTransport {
         command: string;
         args?: string[];
         env?: Record<string, string>;
+        cwd?: string;
+        gracefulExitTimeoutMs?: number;
     }): Promise<AcpStdioTransport> {
         const shouldGuardAgentCli = options.command === 'agent';
         if (shouldGuardAgentCli) {
@@ -122,9 +125,9 @@ export class AcpStdioTransport {
                     const process = spawn(
                         options.command,
                         options.args ?? [],
-                        buildAcpStdioSpawnOptions(options.env)
+                        buildAcpStdioSpawnOptions(options.env, options.cwd, options.command)
                     ) as ChildProcessWithoutNullStreams;
-                    return new AcpStdioTransport(process, true, options.command);
+                    return new AcpStdioTransport(process, true, options.command, options.gracefulExitTimeoutMs);
                 } catch (error) {
                     unregisterActiveAcpTransport();
                     throw error;
@@ -137,12 +140,12 @@ export class AcpStdioTransport {
         const process = spawn(
             options.command,
             options.args ?? [],
-            buildAcpStdioSpawnOptions(options.env)
+            buildAcpStdioSpawnOptions(options.env, options.cwd, options.command)
         ) as ChildProcessWithoutNullStreams;
-        return new AcpStdioTransport(process, false, options.command);
+        return new AcpStdioTransport(process, false, options.command, options.gracefulExitTimeoutMs);
     }
 
-    private constructor(process: ChildProcessWithoutNullStreams, shouldGuardAgentCli: boolean, command: string) {
+    private constructor(process: ChildProcessWithoutNullStreams, shouldGuardAgentCli: boolean, command: string, private readonly gracefulExitTimeoutMs = 0) {
         this.shouldGuardAgentCli = shouldGuardAgentCli;
         this.command = command;
         this.process = process;
@@ -405,8 +408,16 @@ export class AcpStdioTransport {
     }
 
     async close(): Promise<void> {
-        this.process.stdin.end();
-        await killProcessByChildProcess(this.process);
+        let exited = this.gracefulExitTimeoutMs > 0 && !this.shouldGuardAgentCli && (this.exited || this.process.exitCode !== null);
+        if (!exited && this.gracefulExitTimeoutMs > 0 && !this.shouldGuardAgentCli) {
+            const grace = new Promise<boolean>(resolve => {
+                const timer = setTimeout(() => resolve(false), this.gracefulExitTimeoutMs);
+                this.process.once('exit', () => { clearTimeout(timer); resolve(true); });
+            });
+            this.process.stdin.end();
+            exited = await grace;
+        } else this.process.stdin.end();
+        if (!exited) await killProcessByChildProcess(this.process);
         this.releaseAgentCliGuard();
         this.markClosed(new Error('ACP transport closed'));
     }

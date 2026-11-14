@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { extractOpencodeAcpPorts, extractOpencodeAcpServers, parseOpencodeProviderVariants, listOpencodeModelVariants } from './opencodeModelVariants'
+vi.mock('@/opencode/utils/opencodeExecutable', () => ({ opencodeUsesEmbeddedHttpApi: vi.fn(async () => true), readOpencodeV2Models: vi.fn() }))
 
 describe('parseOpencodeProviderVariants', () => {
+    it('reads v2 model catalog variant arrays', () => {
+        expect(parseOpencodeProviderVariants({ data: [{ id: 'model', providerID: 'provider', variants: [{ id: 'low' }, { id: 'high' }] }] }))
+            .toEqual({ 'provider/model': ['low', 'high'] })
+    })
     it('collects variants for models that have at least one variant keyed by providerID/modelId', () => {
         const payload = {
             all: [

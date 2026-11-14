@@ -17,6 +17,13 @@ function getToolResult(messages: AgentMessage[], id: string): Extract<AgentMessa
 }
 
 describe('AcpMessageHandler', () => {
+    it('keeps OpenCode v2 output text when rawOutput only supplies metadata', () => {
+        const messages: AgentMessage[] = [];
+        const handler = new AcpMessageHandler(message => messages.push(message));
+        handler.handleUpdate({ sessionUpdate: ACP_SESSION_UPDATE_TYPES.toolCall, toolCallId: 'v2-shell', title: 'shell', kind: 'execute', status: 'in_progress' });
+        handler.handleUpdate({ sessionUpdate: ACP_SESSION_UPDATE_TYPES.toolCallUpdate, toolCallId: 'v2-shell', status: 'completed', rawOutput: { metadata: { exit: 0 } }, content: [{ type: 'content', content: { type: 'text', text: 'real stdout\n' } }] });
+        expect(getToolResult(messages, 'v2-shell').output).toEqual({ metadata: { exit: 0 }, stdout: 'real stdout\n' });
+    });
     beforeEach(() => {
         vi.spyOn(Date, 'now').mockReturnValue(0);
     });

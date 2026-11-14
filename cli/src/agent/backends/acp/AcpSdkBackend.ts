@@ -136,6 +136,8 @@ export class AcpSdkBackend implements AgentBackend {
         command: string;
         args?: string[];
         env?: Record<string, string>;
+        cwd?: string;
+        gracefulExitTimeoutMs?: number;
         textChunkMode?: AcpTextChunkMode;
         flavor?: AgentFlavor;
     }) {}
@@ -161,7 +163,9 @@ export class AcpSdkBackend implements AgentBackend {
         const transport = await AcpStdioTransport.create({
             command: this.options.command,
             args: this.options.args,
-            env: this.options.env
+            env: this.options.env,
+            cwd: this.options.cwd,
+            gracefulExitTimeoutMs: this.options.gracefulExitTimeoutMs
         });
 
         if (this.transport) {

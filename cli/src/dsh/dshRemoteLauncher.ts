@@ -49,8 +49,7 @@ export class DshRemoteLauncher extends RemoteLauncherBase {
         await backend.initialize()
         const acpSessionId = await backend.newSession({
             cwd: this.session.path,
-            // The official DSH ACP composition rejects non-empty MCP servers;
-            // its tools are configured by the DSH server itself.
+            // This adapter currently uses the DSH profile's own tools.
             mcpServers: []
         })
         this.session.sessionId = acpSessionId

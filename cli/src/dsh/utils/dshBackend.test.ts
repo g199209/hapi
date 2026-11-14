@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { resolveDshAcpCommand } from './dshBackend'
 
 describe('resolveDshAcpCommand', () => {
-    it('uses the official ACP demo executable by default', () => {
+    it('uses the installed Harness ACP profile by default', () => {
         expect(resolveDshAcpCommand({})).toEqual({
-            command: 'dsh-acp-demo',
-            args: []
+            command: 'dsh',
+            args: ['--profile', 'acp']
         })
     })
 
-    it('supports a config path for dsh-acp-demo', () => {
+    it('applies an optional Cordis patch to the ACP profile', () => {
         expect(resolveDshAcpCommand({ HAPI_DSH_ACP_CONFIG: '/tmp/cordis.yml' })).toEqual({
-            command: 'dsh-acp-demo',
-            args: ['--config', '/tmp/cordis.yml']
+            command: 'dsh',
+            args: ['--profile', 'acp', '--patch', '/tmp/cordis.yml']
         })
     })
 

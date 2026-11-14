@@ -46,6 +46,12 @@ The supervisor starts GUI helpers with `CreateProcessW`, `CREATE_NO_WINDOW` and
 handle inheritance disabled. This lets supervision finish while its children
 keep running; each helper still redirects and drains its child's output.
 
+Optional `runnerEnvironment` entries in `node.json` apply only to the HAPI
+Runner and agents it launches. Use them for agent PATH additions and overrides
+such as `HAPI_OPENCODE_PATH`, without changing the shared Codex engine's runtime
+environment. Restart supervision and the Runner to apply changes; the recorded
+Codex engine and App tools bridge can remain alive.
+
 For desktop App tools, also install `codex-app-tools-bridge.cjs` and
 `process-environment.cs` beside the supervisor and configure:
 

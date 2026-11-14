@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { opencodeUsesEmbeddedHttpApi } from './utils/opencodeBackend';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import type { OpencodeMode, PermissionMode } from './types';
 
@@ -69,6 +70,7 @@ vi.mock('ink', () => ({
 }));
 
 vi.mock('./utils/opencodeBackend', () => ({
+    opencodeUsesEmbeddedHttpApi: vi.fn(async () => true),
     allocateFreePort: vi.fn(async () => 48273),
     createOpencodeBackend: vi.fn(() => ({
         initialize: vi.fn(async () => {}),
@@ -395,6 +397,18 @@ function createClearMode(): OpencodeMode {
 }
 
 describe('opencodeRemoteLauncher inline model switch', () => {
+    it('uses v2 ACP for prompts and compact without subscribing to the legacy HTTP server', async () => {
+        vi.mocked(opencodeUsesEmbeddedHttpApi).mockResolvedValueOnce(false);
+        const { session } = createSessionStub([
+            { message: 'hello', mode: createMode() },
+            { message: '', mode: createCompactMode() }
+        ]);
+        await opencodeRemoteLauncher(session as never);
+        expect(harness.promptContents).toHaveLength(2);
+        expect(harness.promptContents[1]).toEqual([{ type: 'text', text: '/compact' }]);
+        expect(harness.eventStreamOptions).toEqual([]);
+        expect(compactHarness.calls).toEqual([]);
+    });
     afterEach(() => {
         harness.setModelArgs = [];
         harness.setConfigOptionArgs = [];

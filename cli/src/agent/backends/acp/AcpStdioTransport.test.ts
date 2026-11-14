@@ -85,13 +85,16 @@ vi.mock('node:child_process', () => ({
                 }
                 handlers.set(`proc:${event}`, [...(handlers.get(`proc:${event}`) ?? []), handler]);
             }),
+            once: vi.fn((event: string, handler: (code: number | null, signal: NodeJS.Signals | null) => void) => {
+                if (event === 'exit') spawnState.exitHandlers.push(handler);
+            }),
             kill: (...args: unknown[]) => spawnState.kill(...args)
         };
         return proc;
     })
 }));
 
-import { AcpStdioTransport, isAcpIndeterminateError } from './AcpStdioTransport';
+import { AcpStdioTransport, isAcpIndeterminateError, buildAcpStdioSpawnOptions } from './AcpStdioTransport';
 import { killProcessByChildProcess } from '@/utils/process';
 
 function emitStdout(chunk: string): void {
@@ -101,6 +104,23 @@ function emitStdout(chunk: string): void {
 }
 
 describe('AcpStdioTransport agent CLI guard', () => {
+    test('lets opted-in stdio servers exit on EOF without tree-killing their managed service', async () => {
+        const transport = await AcpStdioTransport.create({ command: 'opencode', args: ['acp'], gracefulExitTimeoutMs: 500 });
+        const closing = transport.close();
+        spawnState.exitCode = 0;
+        for (const handler of spawnState.exitHandlers) handler(0, null);
+        await closing;
+        expect(spawnState.stdinEnd).toHaveBeenCalledOnce();
+        expect(killProcessByChildProcess).not.toHaveBeenCalled();
+    });
+    test('launches Windows exe ACP servers directly while retaining cmd shims', () => {
+        const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        try {
+            expect(buildAcpStdioSpawnOptions({}, 'C:\\work', 'C:\\Tools\\opencode.exe')).toMatchObject({ shell: false, windowsHide: true, cwd: 'C:\\work' });
+            expect(buildAcpStdioSpawnOptions({}, undefined, 'dsh')).toMatchObject({ shell: true, windowsHide: true });
+        } finally { Object.defineProperty(process, 'platform', descriptor); }
+    });
     afterEach(() => {
         guard.register.mockClear();
         guard.unregister.mockClear();

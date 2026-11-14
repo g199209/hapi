@@ -86,6 +86,9 @@ try {
         HAPI_CODEX_APP_SERVER_ENDPOINT=$config.endpoint; HAPI_HOSTNAME=$config.hostName;
         HAPI_RUNNER_SUPERVISED='1'; HAPI_DISABLE_VERSION_HANDOFF='1'; PATH=$engineEnv['PATH']
     }
+    if ($null -ne $config.PSObject.Properties['runnerEnvironment']) {
+        foreach ($property in $config.runnerEnvironment.PSObject.Properties) { $runnerEnv[$property.Name] = [string]$property.Value }
+    }
     $runnerArgs = @('runner', 'start-sync')
     foreach ($workspace in $config.workspaceRoots) { $runnerArgs += @('--workspace-root', $workspace) }
     while (!(Test-Path $stopPath)) {

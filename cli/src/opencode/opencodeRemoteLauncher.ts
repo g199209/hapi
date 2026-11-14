@@ -12,7 +12,7 @@ import { OpencodeDisplay } from '@/ui/ink/OpencodeDisplay';
 import type { OpencodeSession } from './session';
 import type { OpencodeMode, PermissionMode } from './types';
 import { RPC_METHODS } from '@hapi/protocol/rpcMethods';
-import { allocateFreePort, createOpencodeBackend } from './utils/opencodeBackend';
+import { allocateFreePort, createOpencodeBackend, opencodeUsesEmbeddedHttpApi } from './utils/opencodeBackend';
 import { captureCompactionMarkerSnapshot, fetchCompactionResult, splitProviderModel, triggerOpencodeCompact } from './utils/opencodeCompactBridge';
 import { formatOpencodePromptError } from './utils/opencodeErrorText';
 import {
@@ -172,14 +172,16 @@ class OpencodeRemoteLauncher extends RemoteLauncherBase {
         // to reach that HTTP API later (e.g. for /compact — see
         // opencodeCompactBridge.ts).
         const hostname = '127.0.0.1';
-        const port = await allocateFreePort(hostname);
-        const baseUrl = `http://${hostname}:${port}`;
+        const embeddedHttp = await opencodeUsesEmbeddedHttpApi();
+        const port = embeddedHttp ? await allocateFreePort(hostname) : undefined;
+        const baseUrl = port === undefined ? null : `http://${hostname}:${port}`;
         this.baseUrl = baseUrl;
 
         const backend = createOpencodeBackend({
             cwd: session.path,
             port,
-            hostname
+            hostname,
+            acpOnly: !embeddedHttp
         });
         this.backend = backend;
         registerAcpSessionTitleSync(backend, session.client);
@@ -233,14 +235,14 @@ class OpencodeRemoteLauncher extends RemoteLauncherBase {
         // nothing else, so it is deliberately neither awaited nor
         // error-checked; the subscription reports its own failures at debug
         // level and keeps the session running.
-        this.eventStream = subscribeToOpencodeEvents({
+        this.eventStream = baseUrl ? subscribeToOpencodeEvents({
             baseUrl,
             // Required. Omitting it yields heartbeats and no session events
             // at all, with no error to notice — see the subscription's doc.
             directory: session.path,
             sessionId: acpSessionId,
             onRetry: (retry) => this.surfaceUpstreamRetry(retry)
-        });
+        }) : null;
 
         // Seed currentBackendModel from the ACP session metadata so the first
         // batch — whose model the hub mirrors from the just-discovered session —
@@ -918,13 +920,20 @@ class OpencodeRemoteLauncher extends RemoteLauncherBase {
 
             const backend = this.backend;
             const baseUrl = this.baseUrl;
-            if (!baseUrl || !backend) {
+            if (!backend) {
                 if (!isCancelled()) {
                     session.sendSessionEvent({
                         type: 'message',
                         message: '📦 Compaction failed: OpenCode internal HTTP API base URL is not available.'
                     });
                 }
+                return;
+            }
+            if (!baseUrl) {
+                // Modern OpenCode handles its own slash commands over ACP.
+                if (isCancelled() || this.compactResultSuppressed) return;
+                await backend.prompt(acpSessionId, [{ type: 'text', text: '/compact' }], message => this.handleAgentMessage(message));
+                if (!isCancelled() && !this.compactResultSuppressed) session.sendSessionEvent({ type: 'message', message: '📦 Compaction completed' });
                 return;
             }
 

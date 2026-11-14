@@ -100,6 +100,7 @@ function extractOpencodePromptErrorText(error: unknown): string | null {
                 : null;
     if (raw === null) return null;
     const collapsed = collapseWhitespace(raw);
+    if (/^authentication required: provider authentication required$/i.test(collapsed)) return collapsed;
     if (!JSON_RPC_INTERNAL_ERROR_PREFIX.test(collapsed)) return null;
     const text = collapsed.replace(JSON_RPC_INTERNAL_ERROR_PREFIX, '').trim();
     return text || null;
