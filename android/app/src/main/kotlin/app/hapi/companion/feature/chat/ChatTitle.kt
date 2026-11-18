@@ -39,6 +39,7 @@ internal enum class ChatSessionStatus {
 internal fun chatSessionStatus(header: ChatHeaderUi, reconnecting: Boolean, loadFailed: Boolean = false): ChatSessionStatus = when {
     reconnecting -> ChatSessionStatus.Reconnecting
     !header.hasSessionInfo -> if (loadFailed) ChatSessionStatus.LoadFailed else ChatSessionStatus.Loading
+    header.nativeDisconnected -> ChatSessionStatus.Reconnecting
     header.restoring -> ChatSessionStatus.Restoring
     !header.active -> if (header.lifecycleState == "archived") ChatSessionStatus.Archived else ChatSessionStatus.Inactive
     header.pendingRequestKinds.containsAll(listOf(SummaryPatching.KIND_PERMISSION, SummaryPatching.KIND_INPUT)) -> ChatSessionStatus.NeedsAttention

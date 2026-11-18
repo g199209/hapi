@@ -1,4 +1,12 @@
 export default {
+  "nativeImport.title": "Import existing {agent} session",
+  "nativeImport.description": "Continue the original session with the native App. Existing settings are preserved.",
+  "nativeImport.search": "Search sessions",
+  "nativeImport.directory": "Directory",
+  "nativeImport.allDirectories": "All directories",
+  "nativeImport.empty": "No matching sessions",
+  "nativeImport.open": "Import and open",
+
   // Loading states
   'chat.reasoning': 'Reasoning',
   'loading': 'Loading…',

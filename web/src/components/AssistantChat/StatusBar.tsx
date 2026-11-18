@@ -70,7 +70,7 @@ export function getConnectionStatus(
         }
     }
 
-    if (!active) {
+    if (!active || agentState?.nativeRuntimeStatus === 'disconnected') {
         return {
             text: t('misc.offline'),
             color: 'text-[#999]',
@@ -88,7 +88,7 @@ export function getConnectionStatus(
         }
     }
 
-    if (agentState?.codexCompaction) {
+    if (agentState?.codexCompaction || agentState?.nativeCompacting) {
         return {
             text: t('misc.compacting'),
             color: 'text-[#007AFF]',

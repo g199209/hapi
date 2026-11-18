@@ -46,6 +46,12 @@ class ChatSessionStatusTest {
         assertEquals(ChatSessionStatus.Reconnecting, chatSessionStatus(header.copy(thinking = true, pendingRequestKinds = listOf("permission")), true))
     }
 
+    @Test fun nativeHostDisconnectOverridesCachedIdleAndPendingState() {
+        assertEquals(ChatSessionStatus.Reconnecting, chatSessionStatus(header.copy(nativeDisconnected = true), false))
+        assertEquals(ChatSessionStatus.Reconnecting, chatSessionStatus(header.copy(nativeDisconnected = true,
+            thinking = true, pendingRequestKinds = listOf("input")), false))
+    }
+
     @Test fun unknownSessionIsLoadingRatherThanInactiveAndMessageErrorsDoNotReplaceKnownActivity() {
         assertEquals(ChatSessionStatus.Loading, chatSessionStatus(header.copy(active = false, hasSessionInfo = false), false))
         assertEquals(ChatSessionStatus.LoadFailed, chatSessionStatus(header.copy(hasSessionInfo = false), false, loadFailed = true))

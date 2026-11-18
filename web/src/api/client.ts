@@ -298,6 +298,14 @@ export class ApiClient {
         return await this.request<CodexLocalSessionsResponse>(`/api/codex/sessions${query}`)
     }
 
+    async getNativeSessions(machineId: string, flavor: 'opencode' | 'dsh'): Promise<import('@hapi/protocol').ListNativeSessionsResponse> {
+        return this.request(`/api/native/sessions?${new URLSearchParams({ machineId, flavor })}`)
+    }
+
+    async importNativeSession(machineId: string, flavor: 'opencode' | 'dsh', nativeId: string): Promise<{success: boolean; hapiSessionIds?: string[]; error?: string}> {
+        return this.request('/api/native/import', { method: 'POST', body: JSON.stringify({ machineId, flavor, sessionIds: [nativeId] }) })
+    }
+
     async getPiSessions(cwd?: string | null, machineId?: string | null): Promise<PiLocalSessionsResponse> {
         const params = new URLSearchParams()
         if (cwd?.trim()) params.set('cwd', cwd.trim())

@@ -30,6 +30,23 @@ import org.junit.Test
 class CodexSessionImportTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun nativeAgentTitlesAndSelectionFollowTheChosenFlavor() {
+        var state by mutableStateOf(CodexSessionImportState(
+            open = true, flavor = "opencode", machineId = "local", machineLabel = "GMF-PC",
+            sessions = listOf(CodexLocalSessionSummary("native", "Native history", 3, "/home/repo")),
+        ))
+        compose.setContent { HapiTheme {
+            CodexSessionImportSheet(state, {}, {}, {}, {}, { state = state.copy(selectedId = it) }, {})
+        } }
+        compose.onNodeWithText("Import existing OpenCode session").assertIsDisplayed()
+        compose.onNodeWithTag("codex-import-native").performClick().assertIsSelected()
+        compose.onNodeWithTag("codex-import-confirm").assertIsEnabled()
+        compose.runOnIdle { state = state.copy(flavor = "dsh", selectedId = null) }
+        compose.onNodeWithText("Import existing DeepSeek Harness session").assertIsDisplayed()
+        compose.onNodeWithTag("codex-import-confirm").assertIsNotEnabled()
+        compose.onNodeWithTag("codex-import-native").performClick().assertIsSelected()
+    }
+
     @Test fun baseDirectoryPickerIncludesRelatedWorktreesAndKeepsTheirNativeSelection() {
         var state by mutableStateOf(CodexSessionImportState(
             open = true, machineId = "local", machineLabel = "GMF-PC",

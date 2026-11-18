@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="native_import_title">Import existing %1$s session</string>
+    <string name="native_import_empty">No sessions found on this machine</string>
+</resources>

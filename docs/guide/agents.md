@@ -18,8 +18,8 @@ agent's integration; their supported syntax varies by agent.
 | Grok Build | `hapi grok` | ACP (`grok agent stdio`) | ✓ | ✓ | `default` `auto` `plan` `bypassPermissions` | ✓ |
 | GitHub Copilot | `hapi copilot` | ACP (`copilot --acp --stdio`) | ✓ | ✓ | `default` `read-only` `safe-yolo` `yolo` | ✓ |
 | Kimi | `hapi kimi` | ACP (`kimi acp`) | ✓ | ✓ | `default` `read-only` `safe-yolo` `yolo` | ✓ |
-| OpenCode | `hapi opencode` | ACP (`opencode acp`) | ✓ | ✓ | `default` `plan` `yolo` | ✓ |
-| DeepSeek Harness | `hapi dsh` | ACP (`dsh-acp-demo` or configured server) | — | ✓ | Managed by DSH ACP composition | — |
+| OpenCode | `hapi opencode` | Native shared service (2.x); ACP (1.x) | ✓ | ✓ | `default` `plan` `yolo` | ✓ |
+| DeepSeek Harness | `hapi dsh` | Native Host discovery + authenticated API/mux | ✓ | ✓ | Managed by the native Host | ✓ |
 | Antigravity (agy) | `hapi agy` | Headless print mode (per-turn `agy -p` + NDJSON) | — | ✓ | `request-review` `always-proceed` | ✓ |
 | Pi | `hapi pi` | `pi --mode rpc` (JSON-line RPC over stdio) | — | ✓ | none (always auto-approve) | ✓ |
 | Gemini CLI | — | **Removed** — Google sunset the consumer Gemini CLI (2026-06-18) | — | — | — | — |
@@ -30,15 +30,14 @@ Gemini is no longer launchable: `hapi gemini` is kept as a tombstone command tha
 
 ### ACP
 
-Most remote integrations speak the [Agent Client Protocol](https://agentclientprotocol.com) (ACP) over stdio through a shared HAPI backend. ACP gives remote sessions bidirectional permission approval, plan/todo updates, question UI, model catalogs, and session resume via `session/load`. Cursor, Grok, Copilot, Kimi, OpenCode, and DeepSeek Harness remote sessions all run over ACP. HAPI's DSH adapter currently exposes fresh remote sessions with text, reasoning, tool updates, cancellation, and one-shot permissions; its provider and model are configured in the DSH ACP profile.
-
+Cursor, Grok, Copilot, Kimi and OpenCode 1.x use the [Agent Client Protocol](https://agentclientprotocol.com) (ACP). OpenCode 2.x and DeepSeek Harness use their native shared runtimes, so HAPI and their original App can observe and control the same session concurrently. Native requests are answered immediately through the original runtime.
 ### Permission modes
 
 Permission modes are per-agent — each flavor exposes its own set (see the matrix above). Set the mode at launch with `--permission-mode <mode>` or a shortcut flag (`--yolo`, `--plan`, `--auto-review`, depending on the agent), and switch it mid-session from the web UI. Semantics vary per agent; see the per-agent sections below.
 
 ### Local and remote mode
 
-Work **locally** in the terminal or **remotely** from web/phone, keeping the same conversation when you hand off. The support matrix shows which interfaces each agent offers; DSH, Pi, and Antigravity accept input only through HAPI's remote interface.
+Work **locally** in the terminal or **remotely** from web/phone, keeping the same conversation when you hand off. The support matrix shows which interfaces each agent offers; Pi and Antigravity accept input only through HAPI's remote interface. OpenCode 2.x and DSH keep their original App available alongside HAPI.
 
 - **Remote → local:** continue in the terminal. If it shows the remote-control screen, press double-space to return to local input.
 - **Local → remote:** send a message from the web UI or phone; HAPI handles the handoff.
@@ -52,7 +51,7 @@ hapi resume                # Interactive picker of resumable sessions on this ma
 hapi resume <session-id>   # Resume a specific HAPI session
 ```
 
-`hapi resume` reopens the conversation on this machine, including active sessions you were using from your phone. Gemini and fresh-session-only DSH cannot be resumed. Pi and Antigravity resume with input still controlled from HAPI rather than the terminal.
+`hapi resume` reopens the conversation on this machine, including active sessions you were using from your phone. Gemini cannot be resumed. Pi and Antigravity resume with input still controlled from HAPI rather than the terminal.
 
 ### Mathematical formulas in HAPI Markdown
 
@@ -255,41 +254,27 @@ If a remote session reports authentication failure, run `grok login --device-aut
 
 ## DeepSeek Harness
 
-`hapi dsh` uses the installed Harness CLI with `dsh --profile acp`. The current
-Harness distribution includes this profile; `dsh-acp-demo` is no longer needed.
-Make `dsh` discoverable on the Runner's PATH. Windows Desktop installations
-provide `resources/runtime/cli/bin/dsh.cmd`.
+`hapi dsh` attaches to a running Desktop/Web Host with the HAPI Host discovery plugin installed. The plugin publishes a private descriptor under `$DSH_HOME/run/hosts` (default `~/.dsh/run/hosts`). HAPI uses the native launch-token exchange, one API Peer, mux streams, `session/follow`, and `session/control`; it does not start a private ACP session.
 
-The ACP profile has its own provider/model composition. Configure
-`$DSH_HOME/profiles/acp/cordis.patch.yml` with the same provider endpoint and
-model route used by your Web/Desktop profile. Credentials stay in the existing
-DSH store. A gateway key must use that gateway's endpoint.
-
-`HAPI_DSH_ACP_CONFIG` optionally supplies an additional Cordis `--patch` file.
-For a custom server/profile, override the command and complete JSON argv:
+Start the Host first. Then choose **DeepSeek Harness → Import existing session** on the selected machine in Android or Web, or run:
 
 ```bash
-export HAPI_DSH_ACP_COMMAND=dsh
-export HAPI_DSH_ACP_ARGS_JSON='["--profile", "my-acp-profile"]'
-hapi dsh
+hapi dsh                       # New native session in the running Host
+hapi dsh --resume <native-id>   # Attach an existing native session
+hapi resume <hapi-session-id>   # Reopen its HAPI binding
 ```
 
-HAPI's DSH adapter is remote-only and fresh-session-only. It currently uses the
-profile's tools and provider settings without injecting MCP servers or exposing
-model/effort pickers. Pending one-shot permission requests remain answerable in
-the standard HAPI UI; DSH owns the underlying permission policy.
+The live owner is preferred when several Hosts share one DSH home. Model, preset, permission policy and MCP remain owned by that Host. HAPI mirrors history, live reasoning/tools, input queue, questions and approvals. Either client can answer; the Host withdraws the request from the others. Detaching HAPI leaves the native Agent running. Reconnect restores history and pending interactions with their original IDs.
+
+`HAPI_DSH_PATH` selects an installed CLI for availability discovery. `HAPI_DSH_REGISTRY_DIR` overrides the descriptor directory. Descriptor files contain bearer credentials and must remain private. The old `HAPI_DSH_ACP_*` settings are no longer used by this integration.
 
 ## OpenCode versions and Runner discovery
 
-OpenCode 2.x uses `opencode acp` and its managed service. HAPI omits the old
-`acp --cwd/--port/--hostname` flags, uses ACP for chat and slash commands, and
-reads model variants through the CLI's authenticated v2 API. Existing 1.x
-installations retain their embedded HTTP integration.
+OpenCode 2.x connects to the existing authenticated shared service described by `$XDG_STATE_HOME/opencode/service.json` (default `~/.local/state/opencode/service.json`). A healthy App-owned service is reused. If no service is registered or its listener is gone, HAPI asks `opencode service start` to ensure the native service. Existing 1.x installations retain their embedded HTTP/ACP integration.
 
-The Runner inherits its service environment, rather than interactive shell
-profiles. Add `$HOME/.opencode/bin` to its PATH. `HAPI_OPENCODE_PATH` can select
-an explicit CLI for discovery, model catalogs, and launch, including a Windows
-Desktop-bundled CLI compatible with the current user configuration.
+Android and Web offer **OpenCode → Import existing session**, including linked worktrees when selecting a base directory. Native history, settings and session IDs are retained; repeated imports reuse the HAPI binding. Chat, queue/steer, questions and approvals work concurrently with the original App. `/compact` calls native compaction; `/clear` creates a new HAPI/native session while retaining the original native session.
+
+The Runner inherits its service environment. Add `$HOME/.opencode/bin` to PATH, or use `HAPI_OPENCODE_PATH` for an explicit CLI. `HAPI_OPENCODE_SERVICE_FILE` overrides service discovery. All native discovery and file access run on the chosen machine, within its configured workspace roots.
 
 ## Other agents
 
@@ -297,7 +282,7 @@ Desktop-bundled CLI compatible with the current user configuration.
 - **Codex** (`hapi codex`) — OpenAI's Codex CLI, with terminal/Web control and a dedicated `plan` mode. See [Codex usage and limits](./codex-shared-sessions.md) for resume, terminal-exit behavior, and launch options. [openai/codex](https://github.com/openai/codex)
 - **GitHub Copilot** (`hapi copilot`) — Copilot CLI over ACP (`copilot --acp --stdio`). [GitHub Copilot](https://github.com/features/copilot)
 - **Kimi** (`hapi kimi`) — Moonshot AI's Kimi CLI over ACP (`kimi acp`). [MoonshotAI/kimi-cli](https://github.com/MoonshotAI/kimi-cli)
-- **OpenCode** (`hapi opencode`) — the open-source OpenCode agent over ACP (`opencode acp`). [opencode.ai](https://opencode.ai)
+- **OpenCode** (`hapi opencode`) — the open-source OpenCode agent, sharing its native 2.x service with the original App. [opencode.ai](https://opencode.ai)
 - **Antigravity** (`hapi agy`) — Google's Antigravity CLI (`agy`), driven headlessly via print mode: every turn spawns `agy -p <msg> --conversation <uuid> --output-format stream-json`, and NDJSON events (init / step_update / result) are streamed into the chat. There is no PTY/TUI wrapper and no hook-based permission bridge: permission handling uses agy's own `settings.json` allow/deny rules (`request-review`) or `--dangerously-skip-permissions` (`always-proceed`). Tool calls that lack an allow-rule are auto-denied by agy and surfaced as a chat hint. MCP servers are configured the standard agy way — in the user's global `~/.gemini/config/mcp_config.json` or a workspace `.agents/mcp_config.json` — and are loaded natively by agy in headless mode (no HAPI injection). Remote-only — there is no local terminal input path. [Google Antigravity](https://antigravity.google)
 - **Pi** (`hapi pi`) — the Pi coding agent running as `pi --mode rpc` (JSON-line RPC over piped stdio); remote-control only, no local TUI input path. [badlogic/pi-mono](https://github.com/badlogic/pi-mono)
 

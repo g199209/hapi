@@ -16,6 +16,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class FakeCodexSessionImportGateway : CodexSessionImportGateway {
+    var flavor = "codex"
+    override fun selectFlavor(flavor: String) { this.flavor = flavor }
     var listResponse = CodexLocalSessionsResponse(true)
     var listHandler: (suspend (String) -> CodexLocalSessionsResponse)? = null
     var importResponse = CodexImportResponse(true, listOf("hapi-existing"))
@@ -41,6 +43,25 @@ private fun native(id: String, cwd: String? = "/home/project", at: Long = 10) =
     CodexLocalSessionSummary(id, "Title $id", at, cwd, "中文候选内容 $id")
 
 class CodexSessionImportControllerTest {
+    @Test fun `native flavor is pinned for discovery and import and preserves worktree filtering`() = runTest {
+        for (flavor in listOf("opencode", "dsh")) {
+            val gateway = FakeCodexSessionImportGateway().apply {
+                listResponse = CodexLocalSessionsResponse(true, listOf(native("native", "/base/tree").copy(basePath = "/base")))
+            }
+            val controller = CodexSessionImportController(gateway, this, "failed", "failed") { _, _, _ -> }
+            controller.open("machine", "Machine", "/base", flavor)
+            advanceUntilIdle()
+            assertEquals(flavor, gateway.flavor)
+            assertEquals(flavor, controller.state.value.flavor)
+            assertEquals(listOf("native"), controller.state.value.filteredSessions.map { it.id })
+            controller.select("native")
+            controller.confirm()
+            advanceUntilIdle()
+            assertEquals(listOf("machine" to "native"), gateway.imports)
+            assertEquals(listOf("hapi-existing"), gateway.resumes)
+            assertFalse(controller.state.value.open)
+        }
+    }
     @Test fun `primary directory includes linked worktrees and canonicalizes imported recents without changing native thread`() = runTest {
         val gateway = FakeCodexSessionImportGateway().apply {
             listResponse = CodexLocalSessionsResponse(true, listOf(

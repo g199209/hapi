@@ -220,7 +220,9 @@ export function isSteeringSupportedForSession(metadata?: {
     flavor?: string | null
     cursorSessionId?: string | null
     cursorSessionProtocol?: 'acp' | 'stream-json' | null
+    nativeShared?: boolean
 } | null): boolean {
+    if (metadata?.nativeShared && (metadata.flavor === 'opencode' || metadata.flavor === 'dsh')) return true
     if (metadata?.flavor === 'codex' || metadata?.flavor === 'pi') {
         return true
     }

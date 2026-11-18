@@ -193,6 +193,14 @@ describe('sessionResume', () => {
         }), 3)).toBe(true)
     })
 
+    it('resumes DSH with its own native id', () => {
+        const session = makeSession({ metadata: {
+            path: '/p', host: 'h', flavor: 'dsh', dshSessionId: 'native-dsh-id',
+        } })
+        expect(resolveAgentSessionIdFromMetadata(session.metadata)).toBe('native-dsh-id')
+        expect(inactiveSessionCanResume(session, 3)).toBe(true)
+    })
+
     it('does not infer a DSH resume id from stale cross-flavor metadata', () => {
         expect(resolveAgentSessionIdFromMetadata({
             path: '/p',

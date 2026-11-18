@@ -1,3 +1,4 @@
+import { createNativeMessageSchema } from './nativeMessages'
 import { Database } from 'bun:sqlite'
 import { hasConversationMessageContent } from '@hapi/protocol/messages'
 import { decodeMessageContent } from './contentCodec'
@@ -44,12 +45,13 @@ export {
     WorkGraphValidationError
 } from './workGraph'
 
-const SCHEMA_VERSION: number = 27
+const SCHEMA_VERSION: number = 28
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
     'messages',
     'message_epochs',
+    'native_message_bindings',
     'users',
     'push_subscriptions',
     'fcm_devices',
@@ -351,6 +353,7 @@ export class Store {
             24: () => this.migrateFromV24ToV25(),
             25: () => this.migrateFromV25ToV26(),
             26: () => this.migrateFromV26ToV27(),
+            27: () => createNativeMessageSchema(this.db),
         })
 
         if (currentVersion === 0) {
@@ -397,6 +400,7 @@ export class Store {
     }
 
     private createSchema(): void {
+        createNativeMessageSchema(this.db)
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,

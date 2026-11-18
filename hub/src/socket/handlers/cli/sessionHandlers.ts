@@ -1,4 +1,5 @@
 import type { ClientToServerEvents } from '@hapi/protocol'
+import { NativeMessageBatchSchema } from '@hapi/protocol'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { CopilotAgentMode } from '@hapi/protocol'
@@ -105,6 +106,31 @@ export type SessionHandlersDeps = {
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
     const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionReady, onSessionEnd, onWebappEvent, onBackgroundTaskDelta, onSessionActivity, onAgentProgress, onSweepImmediateQueued, onMessagesConsumed } = deps
+
+    socket.on('native-message-batch', (raw, callback) => {
+        if (typeof callback !== 'function') return
+        try {
+            const batch = NativeMessageBatchSchema.parse(raw)
+            const access = resolveSessionAccess(batch.sid, { fresh: true })
+            if (!access.ok) throw new Error('Session unavailable')
+            const metadata = access.value.metadata as Metadata
+            const nativeId = metadata.flavor === 'dsh' ? metadata.dshSessionId : metadata.opencodeSessionId
+            if (!metadata.nativeShared || !nativeId || batch.source !== `${metadata.flavor}:${nativeId}`) throw new Error('Native source mismatch')
+            const result = store.messages.applyNativeMessageBatch(batch)
+            if (result.structural) onWebappEvent?.({ type: 'messages-invalidated', sessionId: batch.sid })
+            for (const message of result.changed) {
+                onWebappEvent?.({ type: 'message-received', sessionId: batch.sid, message })
+                onSessionActivity?.(batch.sid, message.createdAt)
+            }
+            const consumedAt = new Map<number, string[]>()
+            for (const id of result.consumed) {
+                const at = result.consumedPositions[id]
+                consumedAt.set(at, [...(consumedAt.get(at) ?? []), id])
+            }
+            for (const [invokedAt, localIds] of consumedAt) onWebappEvent?.({ type: 'messages-consumed', sessionId: batch.sid, localIds, invokedAt })
+            callback({ ok: true })
+        } catch (error) { callback({ ok: false, error: error instanceof Error ? error.message : 'Native projection failed' }) }
+    })
 
     socket.on('native-queue-message', data => {
         const parsed = z.object({ sid: z.string(), localId: z.string().min(1), text: z.string().nullable() }).safeParse(data)

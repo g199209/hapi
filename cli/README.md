@@ -165,27 +165,9 @@ environment automatically.
 
 See `src/configuration.ts` for all options.
 
-DeepSeek Harness ACP uses `dsh-acp-demo` by default. Override the executable or
-its arguments without shell parsing:
+OpenCode 2.x and DeepSeek Harness attach to native shared runtimes. Their original App and HAPI can use the same session concurrently. Import existing sessions from Android/Web, or use `hapi opencode --resume <native-id>` / `hapi dsh --resume <native-id>`. HAPI detachment closes its own connection; native work continues.
 
-```bash
-export HAPI_DSH_ACP_COMMAND=dsh-acp-demo
-export HAPI_DSH_ACP_CONFIG=/path/to/deepseek-harness/examples/acp-agent/cordis.yml
-hapi dsh
-```
-
-For a source checkout, use JSON arguments:
-
-```bash
-export HAPI_DSH_ACP_COMMAND=pnpm
-export HAPI_DSH_ACP_ARGS_JSON='["--dir", "/path/to/deepseek-harness", "run", "demo:acp"]'
-```
-
-The official ACP demo is fresh-session-only and does not support native resume,
-model switching, MCP injection, or live tool/reasoning telemetry. HAPI uses the
-standard chat and pending one-shot permission surfaces; the ACP composition
-owns the overall permission policy and HAPI does not advertise resume or model
-controls for DSH.
+OpenCode reuses its authenticated service registration. DSH requires a running Desktop/Web Host with the Host discovery plugin publishing private descriptors. See [native runtime setup](../docs/guide/agents.md#deepseek-harness) for ownership, reconnect and settings.
 
 ### Required
 
@@ -198,9 +180,9 @@ controls for DSH.
 - `HAPI_EXPERIMENTAL` - Enable experimental features (true/1/yes).
 - `HAPI_EXTRA_HEADERS_JSON` - JSON object of extra headers to send on CLI → hub requests, e.g. `{"Cookie":"CF_Authorization=..."}`. Can also be set as the `extraHeaders` object in `~/.hapi/settings.json` (environment variable wins).
 - `HAPI_CLAUDE_PATH` - Path to a specific `claude` executable.
-- `HAPI_DSH_ACP_COMMAND` - ACP server executable for `hapi dsh` (default: `dsh-acp-demo`).
-- `HAPI_DSH_ACP_CONFIG` - Optional `dsh-acp-demo --config` path.
-- `HAPI_DSH_ACP_ARGS_JSON` - Optional JSON array of ACP server arguments.
+- `HAPI_DSH_PATH` - Installed Harness CLI for availability discovery.
+- `HAPI_DSH_REGISTRY_DIR` - Native Host descriptor directory (default `$DSH_HOME/run/hosts`).
+- `HAPI_OPENCODE_SERVICE_FILE` - Native OpenCode 2.x service registration override.
 - `HAPI_HTTP_MCP_URL` - Default MCP target for `hapi mcp`.
 
 ### Runner
@@ -289,7 +271,8 @@ bun run build:single-exe
 - `src/cursor/` - Cursor Agent integration.
 - `src/grok/` - Grok Build native TUI + ACP integration.
 - `src/agent/` - Shared support for ACP-compatible agents.
-- `src/opencode/` - OpenCode ACP + hook integration.
+- `src/opencode/` - OpenCode version dispatch and 1.x ACP integration.
+- `src/native/` - Shared OpenCode 2.x / DSH runtime discovery, control and canonical projection.
 - `src/runner/` - Background service.
 - `src/commands/` - CLI command handlers.
 - `src/ui/` - User interface and diagnostics.

@@ -57,3 +57,5 @@ push envelopes, direct FCM/APNs delivery, and the shared push relay. A native
 client implements this contract for interactive features and that contract
 for background push. Where they overlap (auth, send-message, approve/deny),
 this contract is the more detailed spec.
+
+Native session discovery/import for OpenCode and DSH: [native sessions](./native-sessions.md).

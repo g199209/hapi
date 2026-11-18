@@ -4,7 +4,7 @@ import { AcpStdioTransport } from '@/agent/backends/acp/AcpStdioTransport';
 import packageJson from '../../../package.json';
 import { getErrorMessage } from './rpcResponses';
 import { getAgentLaunchCommand } from '@/agent/agentLaunchCommand';
-import { opencodeUsesEmbeddedHttpApi } from '@/opencode/utils/opencodeExecutable';
+import { opencodeUsesEmbeddedHttpApi, readOpencodeV2Models } from '@/opencode/utils/opencodeExecutable';
 
 export interface ListOpencodeModelsForCwdRequest {
     cwd?: string;
@@ -86,6 +86,14 @@ function extractModelsFromResponse(response: unknown): {
 }
 
 async function runOpencodeProbe(cwd: string): Promise<ListOpencodeModelsForCwdResponse> {
+    if (!await opencodeUsesEmbeddedHttpApi()) {
+        const payload = await readOpencodeV2Models(cwd);
+        const models = isObject(payload) && Array.isArray(payload.data) ? payload.data : [];
+        return { success: true, availableModels: models.filter(isObject).flatMap(model =>
+            typeof model.id === 'string' && typeof model.providerID === 'string'
+                ? [{ modelId: `${model.providerID}/${model.id}`, ...(typeof model.name === 'string' ? { name: model.name } : {}) }] : []),
+            currentModelId: null };
+    }
     const transport = await AcpStdioTransport.create({
         command: getAgentLaunchCommand('opencode'),
         args: ['acp'],

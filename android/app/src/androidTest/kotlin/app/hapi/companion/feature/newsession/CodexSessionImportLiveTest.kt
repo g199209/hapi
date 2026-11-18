@@ -31,7 +31,9 @@ class CodexSessionImportLiveTest {
         val args = InstrumentationRegistry.getArguments()
         val machines = args.getString("importMachines")?.split(',').orEmpty()
         val threads = args.getString("importThreads")?.split(',').orEmpty()
+        val flavors = args.getString("importFlavors")?.split(',') ?: List(threads.size) { "codex" }
         assumeTrue("Two explicit native fixture threads are required", machines.size == 2 && threads.size == 2)
+        require(flavors.size == threads.size && flavors.all { it in listOf("codex", "opencode", "dsh") })
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as HapiApp
         compose.waitUntil(15_000) { app.appGraph.activeHubGraph.value != null }
         val graph = app.appGraph.activeHubGraph.value!!
@@ -55,7 +57,7 @@ class CodexSessionImportLiveTest {
                 var firstId: String? = null
                 repeat(2) {
                     val count = completed.size
-                    compose.runOnUiThread { controller.open(machines[index], "Fixture machine $index", null) }
+                    compose.runOnUiThread { controller.open(machines[index], "Fixture machine $index", null, flavors[index]) }
                     compose.waitUntil(90_000) { !controller.state.value.loading }
                     assertTrue(controller.state.value.error.orEmpty(), controller.state.value.sessions.any { it.id == threads[index] })
                     compose.runOnUiThread { controller.setQuery(threads[index]) }
@@ -65,7 +67,12 @@ class CodexSessionImportLiveTest {
                     assertEquals(controller.state.value.error, count + 1, completed.size)
                     val id = completed.last()
                     val session = runBlocking { graph.session.api.getSession(id) }.session
-                    assertEquals(threads[index], session.metadata?.codexSessionId)
+                    val nativeId = when (flavors[index]) {
+                        "dsh" -> session.metadata?.dshSessionId
+                        "opencode" -> session.metadata?.opencodeSessionId
+                        else -> session.metadata?.codexSessionId
+                    }
+                    assertEquals(threads[index], nativeId)
                     assertEquals(machines[index], session.metadata?.machineId)
                     assertTrue(session.active)
                     if (firstId == null) firstId = id else assertEquals(firstId, id)

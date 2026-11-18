@@ -8,7 +8,6 @@ import {
 } from '@hapi/protocol'
 import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
 import { resolveCodexCommand } from '@/codex/utils/codexExecutable'
-import { resolveDshAcpCommand } from '@/dsh/utils/dshBackend'
 import { getAgentLaunchCommand, resolveExecutable } from './agentLaunchCommand'
 
 type LaunchEnvironment = Record<string, string | undefined>
@@ -32,21 +31,7 @@ function resolveLaunchSpec(agent: AgentFlavor, env: LaunchEnvironment, context: 
         }
         return resolveCodexCommand(env)
     }
-    if (agent === 'dsh') {
-        return resolveDshAcpCommand(env)
-    }
     return { command: getAgentLaunchCommand(agent, env), args: [] }
-}
-
-function hasValidDshConfiguration(env: LaunchEnvironment): boolean {
-    const config = env.HAPI_DSH_ACP_CONFIG?.trim()
-    if (!config) return true
-    if (!isAbsolute(config)) return false
-    try {
-        return existsSync(config) && statSync(config).isFile()
-    } catch {
-        return false
-    }
 }
 
 function hasResolvableCommand(spec: AgentLaunchSpec, env: LaunchEnvironment): boolean {
@@ -80,9 +65,6 @@ export function getAgentAvailability(
     let spec: AgentLaunchSpec
     try {
         spec = resolveLaunchSpec(agent, env, context)
-        if (agent === 'dsh' && !hasValidDshConfiguration(env)) {
-            return { agent, available: false, reason: 'invalid_configuration' }
-        }
     } catch {
         // Claude's resolver throws when the default command is simply absent;
         // that is an installation miss, not malformed static configuration.

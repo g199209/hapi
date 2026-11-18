@@ -85,7 +85,7 @@ export function addImportedMessage(
     })()
 }
 
-function toStoredMessage(row: DbMessageRow): StoredMessage {
+export function toStoredMessage(row: DbMessageRow): StoredMessage {
     return {
         id: row.id,
         sessionId: row.session_id,

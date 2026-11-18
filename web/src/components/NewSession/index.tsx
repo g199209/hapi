@@ -46,6 +46,7 @@ import { ActionButtons } from './ActionButtons'
 import { AgentSelector } from './AgentSelector'
 import { CollaborationModeSelector } from './CollaborationModeSelector'
 import { CodexImportActions } from './CodexImportActions'
+import { NativeSessionImport } from './NativeSessionImport'
 import { PiImportActions } from './PiImportActions'
 import { clearBatchImportedCodexSelection, resolveCodexImportRedirectSessionId } from './codexImportMerge'
 import { AgyModelSelector } from './AgyModelSelector'
@@ -1807,6 +1808,7 @@ export function NewSession(props: {
                 isDisabled={isFormDisabled || agentAvailability.isLoading || Boolean(agentAvailability.error)}
                 onAgentChange={handleAgentChange}
             />
+            {agent === 'opencode' || agent === 'dsh' ? <NativeSessionImport api={props.api} machineId={machineId} flavor={agent} directory={directory} disabled={isFormDisabled} onSuccess={props.onSuccess} /> : null}
             {agentAvailability.isLoading ? (
                 <div className="px-3 py-2 text-xs text-[var(--app-hint)]">
                     {t('newSession.agentAvailabilityLoading')}

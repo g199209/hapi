@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 interface CodexSessionImportGateway {
+    fun selectFlavor(flavor: String) {}
     suspend fun list(machineId: String): CodexLocalSessionsResponse
     suspend fun activeSessionId(machineId: String, nativeSessionId: String): String?
     suspend fun importSession(machineId: String, nativeSessionId: String): CodexImportResponse
@@ -21,22 +22,25 @@ interface CodexSessionImportGateway {
 }
 
 class ApiCodexSessionImportGateway(private val api: HapiApi) : CodexSessionImportGateway {
-    override suspend fun list(machineId: String) = api.getCodexSessions(machineId)
+    private var flavor = "codex"
+    override fun selectFlavor(flavor: String) { this.flavor = flavor }
+    override suspend fun list(machineId: String) = if (flavor == "codex") api.getCodexSessions(machineId) else api.getNativeSessions(machineId, flavor)
     override suspend fun activeSessionId(machineId: String, nativeSessionId: String) =
-        findActiveCodexSessionId(api.getSessions().sessions, machineId, nativeSessionId)
+        findActiveCodexSessionId(api.getSessions().sessions, machineId, nativeSessionId, flavor)
     override suspend fun importSession(machineId: String, nativeSessionId: String) =
-        api.importCodexSession(machineId, nativeSessionId)
+        if (flavor == "codex") api.importCodexSession(machineId, nativeSessionId) else api.importNativeSession(machineId, flavor, nativeSessionId)
     override suspend fun resume(hapiSessionId: String) = api.resumeSession(hapiSessionId).sessionId
 }
 
-internal fun findActiveCodexSessionId(sessions: List<SessionSummary>, machineId: String, nativeSessionId: String): String? =
+internal fun findActiveCodexSessionId(sessions: List<SessionSummary>, machineId: String, nativeSessionId: String, flavor: String = "codex"): String? =
     sessions.filter { session ->
         val metadata = session.metadata
-        session.active && metadata != null && metadata.lifecycleState != "archived" && metadata.flavor == "codex" &&
+        session.active && metadata != null && metadata.lifecycleState != "archived" && metadata.flavor == flavor &&
             metadata.machineId == machineId && metadata.agentSessionId == nativeSessionId
     }.maxByOrNull { it.updatedAt }?.id
 
 data class CodexSessionImportState(
+    val flavor: String = "codex",
     val open: Boolean = false,
     val machineId: String = "",
     val machineLabel: String = "",
@@ -84,12 +88,13 @@ class CodexSessionImportController(
     // A failed resume retries the existing imported record, never imports again.
     private var imported: Pair<String, String>? = null
 
-    fun open(machineId: String, machineLabel: String, directory: String?) {
+    fun open(machineId: String, machineLabel: String, directory: String?, flavor: String = "codex") {
         if (state.value.importing) return
         job?.cancel()
         generation++
         imported = null
-        mutableState.value = CodexSessionImportState(open = true, machineId = machineId, machineLabel = machineLabel)
+        gateway.selectFlavor(flavor)
+        mutableState.value = CodexSessionImportState(open = true, machineId = machineId, machineLabel = machineLabel, flavor = flavor)
         load(directory)
     }
 

@@ -1,4 +1,6 @@
 import type { Database } from 'bun:sqlite'
+import { applyNativeMessageBatch } from './nativeMessages'
+import type { NativeMessageBatch } from '@hapi/protocol'
 
 import { hasConversationMessageContent } from '@hapi/protocol/messages'
 import { decodeMessageContent } from './contentCodec'
@@ -50,6 +52,7 @@ import {
 } from './messages'
 
 export class MessageStore {
+    applyNativeMessageBatch(batch: NativeMessageBatch) { return applyNativeMessageBatch(this.db, batch) }
     private readonly db: Database
 
     constructor(db: Database) {

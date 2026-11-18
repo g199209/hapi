@@ -1,4 +1,12 @@
 export default {
+  "nativeImport.title": "导入已有 {agent} session",
+  "nativeImport.description": "与原生 App 继续同一个 session，保留已有设置。",
+  "nativeImport.search": "搜索 session",
+  "nativeImport.directory": "目录",
+  "nativeImport.allDirectories": "全部目录",
+  "nativeImport.empty": "没有匹配的 session",
+  "nativeImport.open": "导入并打开",
+
   // Loading states
   'chat.reasoning': '思考',
   'loading': '加载中…',

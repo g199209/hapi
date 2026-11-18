@@ -59,6 +59,18 @@ describe('buildCliArgs', () => {
         expect(args).not.toContain('--permission-mode')
     })
 
+    it('leaves the model observed from DSH with its native Host when reopening', () => {
+        const args = buildCliArgs('dsh', {
+            directory: '/tmp',
+            model: 'deepseek/deepseek-v4-pro',
+            resumeSessionId: 'native-dsh-session',
+            existingSessionId: 'hapi-session',
+        })
+        expect(args).toContain('--resume')
+        expect(args).toContain('native-dsh-session')
+        expect(args).not.toContain('--model')
+    })
+
     it('passes --model through for opencode (mid-session model change support)', () => {
         const args = buildCliArgs('opencode', {
             directory: '/tmp',

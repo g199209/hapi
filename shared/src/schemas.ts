@@ -71,6 +71,10 @@ export const MetadataSchema = z.object({
     codexSourceSessionId: z.string().optional(),
     geminiSessionId: z.string().optional(),
     opencodeSessionId: z.string().optional(),
+    dshSessionId: z.string().optional(),
+    nativeRuntime: z.string().optional(),
+    nativeProfile: z.string().optional(),
+    nativeShared: z.boolean().optional(),
     grokSessionId: z.string().optional(),
     agySessionId: z.string().optional(),
     cursorSessionId: z.string().optional(),
@@ -229,6 +233,8 @@ export const CodexRestoreProgressSchema = z.object({
 })
 
 export const AgentStateSchema = z.object({
+    nativeRuntimeStatus: z.enum(['connected', 'disconnected']).optional(),
+    nativeCompacting: z.boolean().optional(),
     codexRestore: CodexRestoreProgressSchema.nullish(),
     codexCompaction: z.object({ turnId: z.string(), itemId: z.string() }).nullish(),
     controlledByUser: z.boolean().nullish(),

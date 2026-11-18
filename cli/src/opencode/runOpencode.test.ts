@@ -3,6 +3,10 @@ import { buildCliArgs } from '@/runner/run';
 import { parseRemoteAgentCommandOptions } from '@/commands/agentCommandOptions';
 import { OPENCODE_PERMISSION_MODES } from '@hapi/protocol/modes';
 
+// This suite exercises the retained v1 ACP/local lifecycle. V2 shared-server
+// dispatch and transport are covered by the native runtime suites.
+vi.mock('./utils/opencodeExecutable', () => ({ opencodeUsesEmbeddedHttpApi: vi.fn(async () => true) }));
+
 const mockOpencodeSession = vi.hoisted(() => ({
     setModel: vi.fn(),
     setPermissionMode: vi.fn(),

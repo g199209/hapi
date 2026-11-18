@@ -11,6 +11,7 @@ const {
     runCodexMock,
     runClaudeMock,
     runGrokMock,
+    runDshMock,
     runPiMock,
     runAgyMock,
     assertCodexLocalSupportedMock,
@@ -26,6 +27,7 @@ const {
     runCodexMock: vi.fn(async () => {}),
     runClaudeMock: vi.fn(async () => {}),
     runGrokMock: vi.fn(async () => {}),
+    runDshMock: vi.fn(async () => {}),
     runPiMock: vi.fn(async () => {}),
     runAgyMock: vi.fn(async () => {}),
     assertCodexLocalSupportedMock: vi.fn(),
@@ -51,6 +53,7 @@ vi.mock('@/ui/ink/ResumeSessionPicker', () => ({
 vi.mock('@/codex/runCodex', () => ({ runCodex: runCodexMock }))
 vi.mock('@/claude/runClaude', () => ({ runClaude: runClaudeMock }))
 vi.mock('@/grok/runGrok', () => ({ runGrok: runGrokMock }))
+vi.mock('@/dsh/runDsh', () => ({ runDsh: runDshMock }))
 vi.mock('@/pi/runPi', () => ({ runPi: runPiMock }))
 vi.mock('@/agy/runAgy', () => ({ runAgy: runAgyMock }))
 vi.mock('@/codex/utils/codexVersion', () => ({ assertCodexLocalSupported: assertCodexLocalSupportedMock }))
@@ -207,6 +210,19 @@ describe('resumeCommand', () => {
             permissionMode: 'default',
             model: 'sonnet',
             effort: 'high'
+        })
+    })
+
+    it('resumes DSH through the shared Host without changing its model', async () => {
+        getLocalResumeTargetMock.mockResolvedValue({
+            sessionId: 'hapi-dsh', flavor: 'dsh', machineId: 'machine-1',
+            directory: '/tmp/project', agentSessionId: 'native-dsh', active: false,
+            controlledByUser: false, model: 'observed-native-model',
+        })
+        await resumeCommand.run(createContext(['hapi-dsh']))
+        expect(runDshMock).toHaveBeenCalledWith({
+            existingSessionId: 'hapi-dsh', workingDirectory: '/tmp/project',
+            resumeSessionId: 'native-dsh', startedBy: 'terminal',
         })
     })
 

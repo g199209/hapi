@@ -47,9 +47,9 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-internal fun OutlinedCodexImportButton(enabled: Boolean, onClick: () -> Unit) {
+internal fun OutlinedCodexImportButton(enabled: Boolean, onClick: () -> Unit, flavor: String = "codex") {
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.codex_import_title))
+        Text(importTitle(flavor))
     }
 }
 
@@ -69,7 +69,7 @@ internal fun CodexSessionImportSheet(
         header = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.codex_import_title), style = MaterialTheme.typography.titleMedium)
+                    Text(importTitle(state.flavor), style = MaterialTheme.typography.titleMedium)
                     Text(state.machineLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onRefresh, enabled = !state.loading && !state.importing) {
@@ -117,7 +117,7 @@ internal fun CodexSessionImportSheet(
                 } else if (sessions.isEmpty()) {
                     item {
                         Text(
-                            stringResource(if (state.sessions.isEmpty()) R.string.codex_import_empty else R.string.codex_import_no_matches),
+                            stringResource(if (state.sessions.isEmpty()) { if (state.flavor == "codex") R.string.codex_import_empty else R.string.native_import_empty } else R.string.codex_import_no_matches),
                             Modifier.padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -154,3 +154,7 @@ internal fun CodexSessionImportSheet(
         }
     }
 }
+
+@Composable
+private fun importTitle(flavor: String): String = if (flavor == "codex") stringResource(R.string.codex_import_title)
+    else stringResource(R.string.native_import_title, if (flavor == "dsh") "DeepSeek Harness" else "OpenCode")

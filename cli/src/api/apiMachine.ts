@@ -69,6 +69,7 @@ import type { CursorChatStoreStatus } from '@hapi/protocol/apiTypes'
 import { MachinePathPolicy } from './machinePathPolicy'
 import { getAgentAvailabilityResponse } from '@/agent/agentAvailability'
 import { resolveGitRepositoryPaths } from '@/utils/gitRepositoryPaths'
+import { ListNativeSessionsRequestSchema } from '@hapi/protocol'
 
 export { normalizeWindowsDriveRoot } from './machinePathPolicy'
 
@@ -340,6 +341,27 @@ export class ApiMachineClient {
                 return await listKimiModelsForCwd(resolvedCwd)
             }
         )
+
+        this.rpcHandlerManager.registerHandler(RPC_METHODS.ListNativeSessions, async raw => {
+            const request = ListNativeSessionsRequestSchema.parse(raw)
+            try {
+                const { discoverNativeSessions } = await import('@/native/discovery')
+                const all = await discoverNativeSessions(request.flavor)
+                const allowed = []
+                for (const row of all) {
+                    if ((!request.sessionId || row.id === request.sessionId) && await this.isLocalSessionWithinWorkspaceRoots(row)) allowed.push(row)
+                }
+                const repositories = await resolveGitRepositoryPaths(allowed.map(row => row.cwd))
+                const sessions = []
+                for (const row of allowed) {
+                    const repository = repositories.get(row.cwd)
+                    const basePath = repository && this.pathPolicy.isWithinSpawnRoots(await this.pathPolicy.resolveForCheck(repository.basePath))
+                        ? repository.basePath : undefined
+                    sessions.push({ ...row, ...(basePath ? { basePath } : {}) })
+                }
+                return { success: true, sessions }
+            } catch (error) { return { success: false, sessions: [], error: error instanceof Error ? error.message : 'Native catalog unavailable' } }
+        })
 
         this.rpcHandlerManager.registerHandler<unknown, ListCodexSessionsRpcResponse>(
             RPC_METHODS.ListCodexSessions,

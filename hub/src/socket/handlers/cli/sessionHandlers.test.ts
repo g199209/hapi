@@ -53,6 +53,26 @@ function reasoningTextOf(message: { content: unknown }): string {
 }
 
 describe('cli session handlers', () => {
+    it('uses native positions in input acknowledgements and rejects a different native source', () => {
+        const store = new Store(':memory:')
+        const session = store.sessions.getOrCreateSession('native-input', {flavor:'opencode',nativeShared:true,opencodeSessionId:'native'}, null, 'default')
+        store.messages.addMessage(session.id,{role:'user',content:{type:'text',text:'hello'}},'input')
+        const socket=new FakeSocket(),events:SyncEvent[]=[]
+        registerSessionHandlers(socket as unknown as CliSocketWithData,{
+            store,resolveSessionAccess:()=>({ok:true,value:session}),emitAccessError(){},onWebappEvent:event=>events.push(event),
+        })
+        const ack=mock()
+        const batch={sid:session.id,source:'opencode:native',messages:[{id:'native-message',inputLocalId:'input',at:100,
+            content:{role:'user',content:{type:'text',text:'hello'}}}],removed:[]}
+        socket.trigger('native-message-batch',batch,ack)
+        expect(ack).toHaveBeenCalledWith({ok:true})
+        expect(events.find(e=>e.type==='messages-consumed')).toMatchObject({invokedAt:100,localIds:['input']})
+        events.length=0
+        socket.trigger('native-message-batch',batch,ack)
+        expect(events).toEqual([])
+        socket.trigger('native-message-batch',{...batch,source:'opencode:wrong'},ack)
+        expect(ack.mock.calls.at(-1)?.[0]).toMatchObject({ok:false,error:'Native source mismatch'})
+    })
     it('skips committed projection replay while applying a changed native position', () => {
         const store = new Store(':memory:')
         const session = store.sessions.getOrCreateSession('projection-replay', {}, null, 'default')

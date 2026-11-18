@@ -117,6 +117,7 @@ object SummaryPatching {
                 "codex" -> metadata.codexSessionId
                 "gemini" -> metadata.geminiSessionId
                 "opencode" -> metadata.opencodeSessionId
+                "dsh" -> metadata.dshSessionId
                 "grok" -> metadata.grokSessionId
                 "agy" -> metadata.agySessionId
                 "cursor" -> metadata.cursorSessionId

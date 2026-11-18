@@ -207,6 +207,7 @@ class NewSessionViewModel(
             machine.id,
             machine.metadata?.displayName?.takeIf { it.isNotBlank() } ?: machine.metadata?.host ?: machine.id.take(8),
             form.value.trimmedDirectory,
+            form.value.agent.takeIf { it in setOf("codex", "opencode", "dsh") } ?: "codex",
         )
     }
     val directoryBrowser = RemoteDirectoryBrowserController(

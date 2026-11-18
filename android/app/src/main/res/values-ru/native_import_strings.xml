@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="native_import_title">Импорт существующего сеанса %1$s</string>
+    <string name="native_import_empty">На этом компьютере нет сеансов</string>
+</resources>

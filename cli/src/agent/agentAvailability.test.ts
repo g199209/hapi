@@ -95,23 +95,26 @@ describe('agent executable resolution', () => {
         }
     })
 
-    it('rejects malformed or missing DSH static configuration', async () => {
+    it('discovers native DSH without consulting obsolete ACP configuration', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'hapi-agent-path-'))
         await makeExecutable(directory, 'dsh')
         expect(getAgentAvailability('dsh', {
             PATH: directory,
             HAPI_DSH_ACP_ARGS_JSON: 'not json',
-        }).reason).toBe('invalid_configuration')
+        })).toEqual({ agent: 'dsh', available: true })
         expect(getAgentAvailability('dsh', {
             PATH: directory,
             HAPI_DSH_ACP_CONFIG: join(directory, 'missing.yml'),
-        }).reason).toBe('invalid_configuration')
+        })).toEqual({ agent: 'dsh', available: true })
 
         const config = join(directory, 'cordis.yml')
         await writeFile(config, 'agents: []\n')
         expect(getAgentAvailability('dsh', {
             PATH: directory,
             HAPI_DSH_ACP_CONFIG: config,
+        })).toEqual({ agent: 'dsh', available: true })
+        expect(getAgentAvailability('dsh', {
+            PATH: '', HAPI_DSH_PATH: join(directory, 'dsh'),
         })).toEqual({ agent: 'dsh', available: true })
     })
 

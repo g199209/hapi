@@ -180,6 +180,7 @@ internal fun NewSessionContent(
     ) {
         MachineSection(state, onMachineSelected)
         OutlinedCodexImportButton(
+            flavor = state.form.agent.takeIf { it in setOf("codex", "opencode", "dsh") } ?: "codex",
             enabled = state.machines.any { it.id == state.form.machineId } && !state.isSpawning && !state.machinesLoading,
             onClick = onCodexImport,
         )

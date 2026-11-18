@@ -726,6 +726,8 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    getAgentState(): AgentState | null { return this.agentState }
+
     onCancelQueuedMessage(callback: (localId: string) => QueueCancelResult | Promise<QueueCancelResult>): void {
         this.cancelQueuedMessageCallback = callback
     }
@@ -1134,6 +1136,11 @@ export class ApiSessionClient extends EventEmitter {
 
     syncNativeQueuedMessage(localId: string, text: string | null): void {
         this.emitOrQueue(() => this.socket.emit('native-queue-message', { sid: this.sessionId, localId, text }))
+    }
+
+    async syncNativeMessageBatch(batch: Omit<import('@hapi/protocol').NativeMessageBatch, 'sid'>): Promise<void> {
+        const answer = await this.socket.timeout(20_000).emitWithAck('native-message-batch', { ...batch, sid: this.sessionId })
+        if (!answer.ok) throw new Error(answer.error ?? 'Native projection rejected')
     }
 
     notifyUserActivity(): void {

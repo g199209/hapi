@@ -124,6 +124,7 @@ data class ChatHeaderUi(
     val lifecycleState: String? = null,
     val restoring: Boolean = false,
     val compacting: Boolean = false,
+    val nativeDisconnected: Boolean = false,
 )
 
 /** Optimistic-permission UI state layered over the reduced blocks (M3b). */
@@ -558,7 +559,7 @@ class ChatViewModel(
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val compacting = sessionStore.sessionDetail(sessionId).map { detail ->
-        detail?.active == true && detail.agentState?.codexCompaction != null
+        detail?.active == true && (detail.agentState?.codexCompaction != null || detail.agentState?.nativeCompacting == true)
     }.stateIn(scope, SharingStarted.Eagerly, false)
 
     private suspend fun <T> whileRestoring(action: suspend () -> T): T {
@@ -2065,7 +2066,8 @@ class ChatViewModel(
             } else summary?.pendingRequestKinds.orEmpty(),
             backgroundTaskCount = if (detail != null) detail.backgroundTaskCount ?: 0 else summary?.backgroundTaskCount ?: 0,
             lifecycleState = detail?.metadata?.lifecycleState ?: summary?.metadata?.lifecycleState,
-            compacting = detail?.active == true && detail.agentState?.codexCompaction != null,
+            compacting = detail?.active == true && (detail.agentState?.codexCompaction != null || detail.agentState?.nativeCompacting == true),
+            nativeDisconnected = detail?.agentState?.nativeRuntimeStatus == "disconnected",
         )
     }
 

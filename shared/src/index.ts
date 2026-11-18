@@ -1,4 +1,5 @@
 export * from './scratchlistAttachments'
+export * from './nativeSessions'
 export * from './workGraph'
 export * from './apiTypes'
 export * from './cursorCliSku'

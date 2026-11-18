@@ -31,6 +31,11 @@ export async function runOpencode(opts: {
     reservedSessionId?: string;
     workingDirectory?: string;
 } = {}): Promise<void> {
+    const { opencodeUsesEmbeddedHttpApi } = await import('./utils/opencodeExecutable')
+    if (!await opencodeUsesEmbeddedHttpApi()) {
+        const { runSharedNativeAgent } = await import('@/native/run')
+        return runSharedNativeAgent('opencode', opts)
+    }
     const workingDirectory = opts.workingDirectory ?? getInvokedCwd();
     const startedBy = opts.startedBy ?? 'terminal';
 

@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonNull
  */
 @Serializable
 data class AgentState(
+    val nativeRuntimeStatus: String? = null,
+    val nativeCompacting: Boolean = false,
     val controlledByUser: Boolean? = null,
     /** `'local' | 'remote' | 'pty'` — mode the session was started in. */
     val startingMode: String? = null,

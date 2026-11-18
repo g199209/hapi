@@ -460,6 +460,11 @@ export class RpcGateway {
         ) as RpcListCodexModelsResponse
     }
 
+    async listNativeSessionsForMachine(machineId: string, request: import('@hapi/protocol').ListNativeSessionsRequest) {
+        const { ListNativeSessionsResponseSchema } = await import('@hapi/protocol')
+        return ListNativeSessionsResponseSchema.parse(await this.machineRpc(machineId, RPC_METHODS.ListNativeSessions, request, 60_000))
+    }
+
     async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListCodexSessionsResponse> {
         const result = await this.machineRpc(machineId, RPC_METHODS.ListCodexSessions, { cwd: cwd ?? null, sessionIds }, MODEL_LIST_RPC_TIMEOUT_MS)
         return ListCodexSessionsRpcResponseSchema.parse(result)

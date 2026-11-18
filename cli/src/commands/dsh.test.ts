@@ -12,11 +12,13 @@ describe('parseDshCommandOptions', () => {
         })
     })
 
-    it('rejects native resume, model, and HAPI permission controls unsupported by DSH ACP', () => {
-        expect(() => parseDshCommandOptions(['--resume', 'native-id']))
-            .toThrow('fresh sessions')
+    it('accepts a native resume target without overriding Host settings', () => {
+        expect(parseDshCommandOptions(['--resume', 'native-id'])).toMatchObject({resumeSessionId:'native-id',startingMode:'remote'})
+    })
+
+    it('leaves model and permission controls with the native Host', () => {
         expect(() => parseDshCommandOptions(['--model', 'deepseek-v4-pro']))
-            .toThrow('configured by the ACP server')
+            .toThrow('configured by the native Host')
         expect(() => parseDshCommandOptions(['--yolo']))
             .toThrow('permission policy')
     })

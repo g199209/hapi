@@ -2028,7 +2028,7 @@ export function buildCliArgs(
   } else if (options.sessionId && !hubUuid.test(options.sessionId)) {
     args.push('--hapi-session-id', options.sessionId);
   }
-  if (options.model) {
+  if (options.model && agent !== 'dsh') {
     args.push('--model', options.model);
   }
   if (options.effort && (agent === 'claude' || agent === 'grok' || agent === 'pi' || agent === 'agy')) {

@@ -555,6 +555,13 @@ class HapiApi internal constructor(
     suspend fun getCodexSessions(machineId: String): CodexLocalSessionsResponse =
         request("GET", url("api", "codex", "sessions").addQueryParameter("machineId", machineId).build())
 
+    suspend fun getNativeSessions(machineId: String, flavor: String): CodexLocalSessionsResponse =
+        request("GET", url("api", "native", "sessions").addQueryParameter("machineId", machineId).addQueryParameter("flavor", flavor).build())
+
+    suspend fun importNativeSession(machineId: String, flavor: String, nativeSessionId: String): CodexImportResponse =
+        request("POST", url("api", "native", "import").build(),
+            app.hapi.protocol.wire.NativeImportRequest(machineId, listOf(nativeSessionId), flavor).toJsonBody())
+
     suspend fun importCodexSession(machineId: String, nativeSessionId: String): CodexImportResponse =
         request(
             "POST", url("api", "codex", "sync-session").build(),

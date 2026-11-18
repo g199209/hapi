@@ -31,6 +31,9 @@ data class CodexLocalSessionsResponse(
 data class CodexImportRequest(val machineId: String, val sessionIds: List<String>)
 
 @Serializable
+data class NativeImportRequest(val machineId: String, val sessionIds: List<String>, val flavor: String)
+
+@Serializable
 data class CodexImportResponse(
     val success: Boolean,
     val hapiSessionIds: List<String> = emptyList(),
