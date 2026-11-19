@@ -47,6 +47,13 @@ private class FakeGateway : NewSessionGateway {
     val pathsExistCalls = mutableListOf<Pair<String, List<String>>>()
     val spawnCalls = mutableListOf<Pair<String, SpawnSessionRequest>>()
     val codexCalls = mutableListOf<String>()
+    val opencodeCalls = mutableListOf<Pair<String, String>>()
+    var opencodeResult = app.hapi.protocol.wire.OpencodeModelsResponse(success = true)
+    var opencodeHandler: (suspend (String, String) -> app.hapi.protocol.wire.OpencodeModelsResponse)? = null
+    override suspend fun opencodeModels(machineId: String, cwd: String): app.hapi.protocol.wire.OpencodeModelsResponse {
+        opencodeCalls += machineId to cwd
+        return opencodeHandler?.invoke(machineId, cwd) ?: opencodeResult
+    }
     val availabilityCalls = mutableListOf<String>()
     val includeHiddenCalls = mutableListOf<Boolean>()
 
@@ -963,6 +970,59 @@ class NewSessionViewModelTest {
         advanceUntilIdle()
         assertNull(vm2.uiState.value.modelOptions)
         assertNull(vm2.uiState.value.reasoningEffortOptions)
+    }
+
+    @Test
+    fun `opencode catalog follows machine and cwd and selection reaches spawn while default omits override`() = runTest {
+        val gateway = FakeGateway().apply {
+            opencodeResult = app.hapi.protocol.wire.OpencodeModelsResponse(success = true, availableModels = listOf(
+                app.hapi.protocol.wire.OpencodeModelSummary("one/model", "Model"),
+                app.hapi.protocol.wire.OpencodeModelSummary("two/model", "Model"),
+            ))
+        }
+        val vm = buildViewModel(gateway, FakeMachineStore(listOf(machine("m1"), machine("m2"))), FakePrefs())
+        advanceUntilIdle()
+        vm.setDirectory("/repo"); vm.setAgent("opencode")
+        advanceUntilIdle()
+        assertEquals("m1" to "/repo", gateway.opencodeCalls.last())
+        assertEquals(listOf("auto", "one/model", "two/model"), vm.uiState.value.modelOptions?.map { it.value })
+        assertEquals("Model · two", vm.uiState.value.modelOptions?.last()?.label)
+        assertNull(NewSessionLogic.buildSpawnRequest(vm.uiState.value.form, false).model)
+        vm.setModel("two/model"); vm.create(); advanceUntilIdle()
+        assertEquals("two/model", gateway.spawnCalls.last().second.model)
+        vm.setMachine("m2"); vm.setDirectory("/other"); advanceUntilIdle()
+        assertEquals("m2" to "/other", gateway.opencodeCalls.last())
+        vm.setAgent("dsh"); advanceUntilIdle()
+        assertNull(vm.uiState.value.modelOptions)
+    }
+
+    @Test
+    fun `opencode stale catalog cannot overwrite another directory and errors allow retry`() = runTest {
+        var continuation: Continuation<app.hapi.protocol.wire.OpencodeModelsResponse>? = null
+        val gateway = FakeGateway().apply {
+            opencodeHandler = { _, cwd ->
+                if (cwd == "/old") suspendCoroutine { continuation = it }
+                else app.hapi.protocol.wire.OpencodeModelsResponse(success = false, error = "offline")
+            }
+        }
+        val vm = buildViewModel(gateway, FakeMachineStore(listOf(machine("m1"))), FakePrefs())
+        advanceUntilIdle()
+        vm.setAgent("opencode"); vm.setDirectory("/old"); advanceUntilIdle()
+        assertTrue(vm.uiState.value.modelsLoading)
+        vm.setDirectory("/new"); runCurrent()
+        continuation!!.resumeWith(Result.success(app.hapi.protocol.wire.OpencodeModelsResponse(
+            success = true, availableModels = listOf(app.hapi.protocol.wire.OpencodeModelSummary("old/model")),
+        )))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.modelsError?.contains("offline") == true)
+        assertEquals(listOf("auto"), vm.uiState.value.modelOptions?.map { it.value })
+        gateway.opencodeHandler = null
+        gateway.opencodeResult = app.hapi.protocol.wire.OpencodeModelsResponse(success = true, availableModels = listOf(
+            app.hapi.protocol.wire.OpencodeModelSummary("new/model"),
+        ))
+        vm.retryCodexModels(); advanceUntilIdle()
+        assertEquals(listOf("auto", "new/model"), vm.uiState.value.modelOptions?.map { it.value })
+        assertNull(vm.uiState.value.modelsError)
     }
 
     @Test

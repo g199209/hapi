@@ -222,7 +222,10 @@ export class NativeSessionBridge {
         })
         register(RPC_METHODS.SetSessionConfig,async raw=>{
             if(!this.runtime?.configure)throw new Error('Settings are managed by the native Host')
-            await this.runtime.configure(object(raw));this.schedule();return {success:true}
+            const config = object(raw)
+            await this.runtime.configure(config)
+            this.schedule()
+            return { applied: config }
         })
         register(RPC_METHODS.Switch,async()=>{throw new Error('control_mode_not_applicable')})
         register(RPC_METHODS.HandoffLocal,async()=>{throw new Error('control_mode_not_applicable')})

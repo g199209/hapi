@@ -183,6 +183,13 @@ private class RecordingChatApi : ChatSessionApi {
     var serverMessages: List<DecryptedMessage> = emptyList()
     var messageReadFailure = false
 
+    var opencodeModelsResult = app.hapi.protocol.wire.OpencodeModelsResponse(success = false, error = "not scripted")
+    var opencodeModelCalls = 0
+    override suspend fun getSessionOpencodeModels(sessionId: String): app.hapi.protocol.wire.OpencodeModelsResponse {
+        opencodeModelCalls++
+        return opencodeModelsResult
+    }
+
     var codexModelsResult: CodexModelsResponse = CodexModelsResponse(success = false, error = "not scripted")
 
     override suspend fun getMessages(sessionId: String, query: MessagesQuery): MessagesResponse {
@@ -1279,6 +1286,42 @@ class ChatViewModelInteractionTest {
 
         harness.viewModel.setEffort("medium")
         harness.api.configCalls.first { "modelReasoningEffort:medium" in it }
+    }
+
+    @Test
+    fun `opencode model picker uses the live catalog and sends the full provider-qualified model`() = runTest {
+        val h = InteractionHarness(this, detail(flavor = "opencode", model = "provider/old"))
+        h.api.opencodeModelsResult = app.hapi.protocol.wire.OpencodeModelsResponse(
+            success = true, availableModels = listOf(
+                app.hapi.protocol.wire.OpencodeModelSummary("provider/old", "Old"),
+                app.hapi.protocol.wire.OpencodeModelSummary("other/new", "New"),
+            ),
+        )
+        h.viewModel.start()
+        h.sessionStore.calls.first { calls -> calls.any { it.startsWith("loadDetail") } }
+        h.viewModel.loadModelOptions()
+        val config = h.viewModel.config.first { it.modelOptions?.size == 2 }
+        assertEquals(listOf("provider/old", "other/new"), config.modelOptions?.map { it.value })
+        assertEquals("New · other", config.modelOptions?.last()?.label)
+        h.viewModel.setModel("other/new")
+        h.api.configCalls.first { "model:other/new" in it }
+        assertEquals("other/new", h.sessionStore.currentDetail(IX_SESSION)?.model)
+        assertEquals(1, h.api.opencodeModelCalls)
+    }
+
+    @Test
+    fun `failed opencode catalog can be retried when settings opens again`() = runTest {
+        val h = InteractionHarness(this, detail(flavor = "opencode"))
+        h.viewModel.start()
+        h.sessionStore.calls.first { calls -> calls.any { it.startsWith("loadDetail") } }
+        h.viewModel.loadModelOptions()
+        h.viewModel.config.first { !it.modelOptionsLoading && h.api.opencodeModelCalls == 1 }
+        h.api.opencodeModelsResult = app.hapi.protocol.wire.OpencodeModelsResponse(
+            success = true, availableModels = listOf(app.hapi.protocol.wire.OpencodeModelSummary("provider/model")),
+        )
+        h.viewModel.loadModelOptions()
+        h.viewModel.config.first { it.modelOptions?.isNotEmpty() == true }
+        assertEquals(2, h.api.opencodeModelCalls)
     }
 
     @Test

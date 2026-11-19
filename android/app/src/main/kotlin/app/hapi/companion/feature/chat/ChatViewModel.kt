@@ -52,6 +52,7 @@ import app.hapi.protocol.window.asWindowMessage
 import app.hapi.protocol.wire.AgentState
 import app.hapi.protocol.wire.ApprovePermissionRequest
 import app.hapi.protocol.wire.AttachmentMetadata
+import app.hapi.protocol.wire.OpencodeModelSummary
 import app.hapi.protocol.wire.CodexModelSummary
 import app.hapi.protocol.wire.HapiJson
 import app.hapi.protocol.wire.Machine
@@ -454,14 +455,15 @@ class ChatViewModel(
     )
     private val codexPlanOperations = MutableStateFlow(CodexPlanOperations())
 
-    private sealed interface CodexModels {
-        data object Idle : CodexModels
-        data object Loading : CodexModels
-        data class Loaded(val models: List<CodexModelSummary>) : CodexModels
-        data object Failed : CodexModels
+    private sealed interface SessionModels {
+        data object Idle : SessionModels
+        data object Loading : SessionModels
+        data class Loaded(val models: List<CodexModelSummary>) : SessionModels
+        data class OpencodeLoaded(val models: List<OpencodeModelSummary>) : SessionModels
+        data object Failed : SessionModels
     }
 
-    private val codexModels = MutableStateFlow<CodexModels>(CodexModels.Idle)
+    private val sessionModels = MutableStateFlow<SessionModels>(SessionModels.Idle)
 
     private sealed interface SlashFetch {
         data object Idle : SlashFetch
@@ -608,11 +610,11 @@ class ChatViewModel(
     val config: StateFlow<SessionConfigUi> = combine(
         sessionStore.sessionDetail(sessionId),
         summaryFlow(),
-        codexModels,
+        sessionModels,
         configOpPending,
     ) { detail, summary, models, _ ->
         buildConfigUi(detail, summary, models)
-    }.stateIn(scope, SharingStarted.Eagerly, buildConfigUi(null, null, CodexModels.Idle))
+    }.stateIn(scope, SharingStarted.Eagerly, buildConfigUi(null, null, SessionModels.Idle))
 
     /**
      * Slash-command dropdown rows (B-M3ce): non-empty only while the composer
@@ -1753,26 +1755,29 @@ class ChatViewModel(
         )
     }
 
-    /** Fetch the codex model catalog for the picker (no-op for other flavors). */
+    /** Load the current agent's live model catalog when opening session settings. */
     fun loadModelOptions() {
-        if (currentFlavor() != "codex") return
-        if (codexModels.value is CodexModels.Loading || codexModels.value is CodexModels.Loaded) return
-        codexModels.value = CodexModels.Loading
+        val flavor = currentFlavor()
+        if (flavor !in setOf("codex", "opencode")) return
+        if (sessionModels.value is SessionModels.Loading || sessionModels.value is SessionModels.Loaded ||
+            sessionModels.value is SessionModels.OpencodeLoaded) return
+        sessionModels.value = SessionModels.Loading
         scope.launch {
-            codexModels.value = try {
-                val response = api.getSessionCodexModels(sessionId)
-                val models = response.models
-                if (response.success && models != null) {
-                    CodexModels.Loaded(models)
+            sessionModels.value = try {
+                if (flavor == "opencode") {
+                    val response = api.getSessionOpencodeModels(sessionId)
+                    check(response.success) { response.error ?: "Failed to load OpenCode models" }
+                    SessionModels.OpencodeLoaded(response.availableModels.distinctBy { it.modelId })
                 } else {
-                    _events.tryEmit(ChatEvent.Notice(ChatNotice.ModelsLoadFailed(response.error)))
-                    CodexModels.Failed
+                    val response = api.getSessionCodexModels(sessionId)
+                    check(response.success && response.models != null) { response.error ?: "Failed to load Codex models" }
+                    SessionModels.Loaded(response.models!!)
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
                 _events.tryEmit(ChatEvent.Notice(ChatNotice.ModelsLoadFailed(error.message)))
-                CodexModels.Failed
+                SessionModels.Failed
             }
         }
     }
@@ -1796,7 +1801,7 @@ class ChatViewModel(
         }
     }
 
-    private fun buildConfigUi(detail: Session?, summary: SessionSummary?, models: CodexModels): SessionConfigUi {
+    private fun buildConfigUi(detail: Session?, summary: SessionSummary?, models: SessionModels): SessionConfigUi {
         val flavor = detail?.metadata?.flavor ?: summary?.metadata?.flavor
         val model = detail?.model
         val modelOptions: List<CatalogOption>?
@@ -1812,7 +1817,7 @@ class ChatViewModel(
             }
             "codex" -> {
                 when (models) {
-                    is CodexModels.Loaded -> {
+                    is SessionModels.Loaded -> {
                         modelOptions = models.models.map { summaryRow ->
                             CatalogOption(
                                 value = summaryRow.id,
@@ -1829,11 +1834,17 @@ class ChatViewModel(
                             }
                         }
                     }
-                    is CodexModels.Loading -> {
+                    is SessionModels.Loading -> {
                         modelOptions = emptyList()
                         modelOptionsLoading = true
                     }
                     else -> modelOptions = emptyList()
+                }
+            }
+            "opencode" -> {
+                modelOptionsLoading = models is SessionModels.Loading
+                modelOptions = (models as? SessionModels.OpencodeLoaded)?.models.orEmpty().map {
+                    CatalogOption(value = it.modelId, label = it.displayName)
                 }
             }
             else -> modelOptions = null // Generic fallback: hide the picker.

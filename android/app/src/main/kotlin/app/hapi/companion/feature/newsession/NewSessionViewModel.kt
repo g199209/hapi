@@ -15,6 +15,7 @@ import app.hapi.protocol.catalog.CopilotAgentMode
 import app.hapi.protocol.catalog.Flavors
 import app.hapi.protocol.catalog.PermissionMode
 import app.hapi.protocol.catalog.PermissionModes
+import app.hapi.protocol.wire.OpencodeModelSummary
 import app.hapi.protocol.wire.CodexModelSummary
 import app.hapi.protocol.wire.AgentAvailabilityEntry
 import app.hapi.protocol.wire.Machine
@@ -37,6 +38,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -124,7 +127,7 @@ data class NewSessionUiState(
     val agents: List<OptionItem>,
     val agentAvailabilityLoading: Boolean,
     val agentAvailabilityError: String?,
-    /** Null hides the model picker (v1: only claude + supported codex). */
+    /** Null hides the model picker; native catalogs are scoped to the selected machine. */
     val modelOptions: List<OptionItem>?,
     val modelsLoading: Boolean,
     val modelsError: String?,
@@ -153,9 +156,8 @@ data class NewSessionUiState(
  * Web reference: `web/src/components/NewSession/index.tsx`.
  *
  * v1 notes (deliberate cuts, mirrored in the option matrix):
- * - model pickers: claude (static presets) + codex (machine catalog; hidden
- *   when the runner lacks the RPC). agy/opencode/grok/copilot/cursor/pi model
- *   discovery is TODO — spawn omits `model` so the agent default applies.
+ * - model pickers: claude presets, codex machine catalog, and opencode
+ *   machine/directory catalog. Other flavors omit `model` at spawn.
  * - effort: claude static levels; codex reasoning effort from the catalog.
  *   grok/pi effort ships with their model discovery.
  * - grok's `auto` availability probe (directory-scoped grok-models) is
@@ -174,6 +176,19 @@ class NewSessionViewModel(
 ) {
     private val form = MutableStateFlow(NewSessionForm())
     private val prefsData = MutableStateFlow(NewSessionPrefsData())
+    private sealed interface OpencodeModelsUi {
+        data object Hidden : OpencodeModelsUi
+        data object Loading : OpencodeModelsUi
+        data class Loaded(val models: List<OpencodeModelSummary>) : OpencodeModelsUi
+        data class Failed(val message: String) : OpencodeModelsUi
+    }
+    private data class OpencodeContext(val machineId: String, val cwd: String)
+    private fun opencodeContext(current: NewSessionForm): OpencodeContext? =
+        current.machineId?.takeIf { current.agent == "opencode" && current.trimmedDirectory.isNotEmpty() }
+            ?.let { OpencodeContext(it, current.trimmedDirectory) }
+
+    private val opencodeModels = MutableStateFlow<OpencodeModelsUi>(OpencodeModelsUi.Hidden)
+    private val opencodeReload = MutableStateFlow(0)
     private val codexModels = MutableStateFlow<CodexModelsUi>(CodexModelsUi.Hidden)
     private val agentAvailability = MutableStateFlow<AgentAvailabilityUi>(AgentAvailabilityUi.Loading)
     private val suggestions = MutableStateFlow<List<String>>(emptyList())
@@ -229,6 +244,33 @@ class NewSessionViewModel(
     private var cachedListing: Pair<Pair<String, String>, List<MachineDirectoryEntry>>? = null
 
     init {
+        scope.launch {
+            combine(form.map(::opencodeContext).distinctUntilChanged(), opencodeReload) { context, _ -> context }
+                .collectLatest { context ->
+                    if (context == null) {
+                        opencodeModels.value = OpencodeModelsUi.Hidden
+                        return@collectLatest
+                    }
+                    opencodeModels.value = OpencodeModelsUi.Loading
+                    delay(debounceMs)
+                    val result = try {
+                        val response = gateway.opencodeModels(context.machineId, context.cwd)
+                        check(response.success) { response.error ?: "Failed to load OpenCode models" }
+                        OpencodeModelsUi.Loaded(response.availableModels.distinctBy { it.modelId })
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        OpencodeModelsUi.Failed(error.message ?: "Failed to load OpenCode models")
+                    }
+                    if (opencodeContext(form.value) != context) return@collectLatest
+                    opencodeModels.value = result
+                    if (result is OpencodeModelsUi.Loaded) form.update { current ->
+                        if (current.model != "auto" && result.models.none { it.modelId == current.model }) {
+                            current.copy(model = "auto")
+                        } else current
+                    }
+                }
+        }
         scope.launch {
             prefsData.value = runCatching { prefs.readPrefs() }.getOrDefault(NewSessionPrefsData())
             val draft = runCatching { prefs.readDraft() }.getOrNull()?.let(NewSessionLogic::sanitizeDraft)
@@ -292,7 +334,7 @@ class NewSessionViewModel(
     val uiState: StateFlow<NewSessionUiState> = combine(
         form,
         machineStore.machines,
-        combine(codexModels, agentAvailability) { codex, availability -> CatalogState(codex, availability) },
+        combine(codexModels, opencodeModels, agentAvailability) { codex, opencode, availability -> CatalogState(codex, availability, opencode) },
         combine(suggestions, combine(pathExistence, worktreeBasePaths) { exists, bases -> exists to bases }, prefsData, outsideWorkspaceRoots, directoryLookupError) {
                 s, paths, stored, outside, lookupError ->
             DirectoryData(s, paths.first, stored, outside, lookupError, paths.second)
@@ -309,7 +351,7 @@ class NewSessionViewModel(
         initialValue = buildUiState(
             form.value,
             machineStore.machines.value,
-            CatalogState(codexModels.value, agentAvailability.value),
+            CatalogState(codexModels.value, agentAvailability.value, opencodeModels.value),
             DirectoryData(emptyList(), emptyMap(), prefsData.value, emptySet(), null),
             SpawnFlags(isSpawning = false, spawnError = null, confirmed = false, machinesSettled = false),
         ),
@@ -325,6 +367,7 @@ class NewSessionViewModel(
     private data class CatalogState(
         val codex: CodexModelsUi,
         val availability: AgentAvailabilityUi,
+        val opencode: OpencodeModelsUi,
     )
 
     private data class DirectoryData(
@@ -418,6 +461,10 @@ class NewSessionViewModel(
     fun setCopilotAgentMode(mode: String) = form.update { it.copy(copilotAgentMode = mode) }
 
     fun retryCodexModels() {
+        if (form.value.agent == "opencode") {
+            opencodeReload.update { it + 1 }
+            return
+        }
         codexFetchedForMachine = null
         refreshCodexModelsIfNeeded()
     }
@@ -824,6 +871,10 @@ class NewSessionViewModel(
             }
             agent == "codex" && (codex is CodexModelsUi.Loading || codex is CodexModelsUi.Failed) ->
                 listOf(OptionItem("auto", "Default"))
+            agent == "opencode" -> listOf(OptionItem("auto", "Default")) +
+                (catalogs.opencode as? OpencodeModelsUi.Loaded)?.models.orEmpty().map {
+                    OptionItem(it.modelId, it.displayName)
+                }
             // codex Unsupported (old runner) and every other flavor: hidden.
             else -> null
         }
@@ -875,8 +926,10 @@ class NewSessionViewModel(
             agentAvailabilityLoading = availability is AgentAvailabilityUi.Loading,
             agentAvailabilityError = availabilityError,
             modelOptions = modelOptions,
-            modelsLoading = agent == "codex" && codex is CodexModelsUi.Loading,
-            modelsError = (codex as? CodexModelsUi.Failed)?.message?.let { strings.modelsFailedDetail.format(it) },
+            modelsLoading = (agent == "codex" && codex is CodexModelsUi.Loading) ||
+                (agent == "opencode" && catalogs.opencode is OpencodeModelsUi.Loading),
+            modelsError = (if (agent == "opencode") (catalogs.opencode as? OpencodeModelsUi.Failed)?.message
+                else (codex as? CodexModelsUi.Failed)?.message)?.let { strings.modelsFailedDetail.format(it) },
             effortOptions = if (agent == "claude") NewSessionCatalogs.CLAUDE_EFFORTS else null,
             reasoningEffortOptions = reasoningEffortOptions,
             permission = permission,

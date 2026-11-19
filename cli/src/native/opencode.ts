@@ -155,11 +155,15 @@ export class OpencodeRuntime implements NativeRuntime {
     }
     private modelRef(model:string){const index=model.indexOf('/');if(index<1)throw new Error('Select a provider/model');return {providerID:model.slice(0,index),id:model.slice(index+1)}}
     async configure(config:Record<string,unknown>):Promise<void>{
-        if(typeof config.model==='string'||typeof config.modelReasoningEffort==='string'){
+        for (const key of Object.keys(config)) {
+            if (!['model', 'modelReasoningEffort', 'permissionMode'].includes(key)) throw new Error(`OpenCode does not support setting ${key}`)
+        }
+        if ('model' in config && typeof config.model !== 'string') throw new Error('Select an explicit OpenCode provider/model')
+        if(typeof config.model==='string'||'modelReasoningEffort' in config){
             const current=typeof config.model==='string'?this.modelRef(config.model):(await this.call('GET',`session/${this.id}`)).data.model
-            const variant=typeof config.modelReasoningEffort==='string'?config.modelReasoningEffort:current.variant
+            const variant='modelReasoningEffort' in config ? config.modelReasoningEffort : current.variant
             const model={...current,...(variant&&variant!=='default'?{variant}:{})}
-            if(variant==='default')delete model.variant
+            if(variant == null || variant === 'default')delete model.variant
             await this.call('POST',`session/${this.id}/model`,{model})
         }
         if(typeof config.permissionMode==='string'){

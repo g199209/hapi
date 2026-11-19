@@ -88,10 +88,7 @@ object NewSessionLogic {
     fun buildSpawnRequest(form: NewSessionForm, codexFastTierVisible: Boolean): SpawnSessionRequest {
         val agent = form.agent
         val resolvedModel = when {
-            // v1 model pickers: claude (static presets) and codex (machine
-            // catalog). Other flavors' discovery endpoints are TODO(M3d+),
-            // so their model is never sent.
-            (agent == "claude" || agent == "codex") && form.model != "auto" -> form.model
+            agent in setOf("claude", "codex", "opencode") && form.model != "auto" -> form.model
             else -> null
         }
         return SpawnSessionRequest(

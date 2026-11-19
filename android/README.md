@@ -51,6 +51,7 @@ anchor.
   priority. A stationary hold opens the existing action menu on release.
   Pending requests disable duplicate actions; failures restore the row and show
   the existing error snackbar. Archived rows retain their view/reopen menu.
+- **OpenCode model selection:** new sessions load models from the selected machine and directory; Default omits a model override. The chat's Session settings loads its live OpenCode catalog and applies model changes to the shared native session. Provider labels distinguish identical model names; directory/machine changes cancel stale catalog loads, and failed loads can be retried.
 - **Native session import:** select OpenCode or DeepSeek Harness on the chosen machine, then Import existing session. Search and base-directory filtering include linked Git worktrees. Import keeps the native session/settings; repeated import reuses its HAPI binding. Native App and HAPI share live messages, queue, questions and approvals. The existing chat status shows native reconnect and compaction.
 - **Codex restoration:** reopening or sending to an inactive session immediately
   shows Restoring in the existing header status and a phase panel above the

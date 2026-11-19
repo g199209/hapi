@@ -8,6 +8,7 @@ import app.hapi.protocol.wire.AuthResponse
 import app.hapi.protocol.wire.CancelMessageResponse
 import app.hapi.protocol.wire.RetryIndeterminateMessageResponse
 import app.hapi.protocol.wire.CodexModelsResponse
+import app.hapi.protocol.wire.OpencodeModelsResponse
 import app.hapi.protocol.wire.CodexImportRequest
 import app.hapi.protocol.wire.CodexImportResponse
 import app.hapi.protocol.wire.CodexLocalSessionsResponse
@@ -487,6 +488,9 @@ class HapiApi internal constructor(
     override suspend fun getSessionCodexModels(sessionId: String): CodexModelsResponse =
         request("GET", url("api", "sessions", sessionId, "codex-models").build())
 
+    override suspend fun getSessionOpencodeModels(sessionId: String): OpencodeModelsResponse =
+        request("GET", url("api", "sessions", sessionId, "opencode-models").build())
+
     // ------------------------------------------------- commands & skills --
 
     /** `GET /api/sessions/:id/slash-commands` (RPC-wrapped: check `success`). */
@@ -551,6 +555,9 @@ class HapiApi internal constructor(
      */
     suspend fun getMachineCodexModels(machineId: String): CodexModelsResponse =
         request("GET", url("api", "machines", machineId, "codex-models").build())
+
+    suspend fun getMachineOpencodeModels(machineId: String, cwd: String): OpencodeModelsResponse =
+        request("GET", url("api", "machines", machineId, "opencode-models").addQueryParameter("cwd", cwd).build())
 
     suspend fun getCodexSessions(machineId: String): CodexLocalSessionsResponse =
         request("GET", url("api", "codex", "sessions").addQueryParameter("machineId", machineId).build())

@@ -2,6 +2,7 @@ package app.hapi.companion.feature.newsession
 
 import app.hapi.data.api.HapiApi
 import app.hapi.protocol.wire.CodexModelsResponse
+import app.hapi.protocol.wire.OpencodeModelsResponse
 import app.hapi.protocol.wire.AgentAvailabilityResponse
 import app.hapi.protocol.wire.MachineListDirectoryResponse
 import app.hapi.protocol.wire.MachinePathsExistsResponse
@@ -31,6 +32,9 @@ interface NewSessionGateway {
 
     /** `GET /api/machines/:id/codex-models` (RPC-wrapped; 503 `rpc_target_missing` = hide picker). */
     suspend fun codexModels(machineId: String): CodexModelsResponse
+
+    suspend fun opencodeModels(machineId: String, cwd: String): OpencodeModelsResponse =
+        OpencodeModelsResponse(success = false, error = "OpenCode model catalog unavailable")
 }
 
 /** Production adapter over the hub's [HapiApi]. */
@@ -52,4 +56,7 @@ class ApiNewSessionGateway(private val api: HapiApi) : NewSessionGateway {
 
     override suspend fun codexModels(machineId: String): CodexModelsResponse =
         api.getMachineCodexModels(machineId)
+
+    override suspend fun opencodeModels(machineId: String, cwd: String): OpencodeModelsResponse =
+        api.getMachineOpencodeModels(machineId, cwd)
 }

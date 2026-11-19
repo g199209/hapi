@@ -420,6 +420,22 @@ class HapiApiTest {
     }
 
     @Test
+    fun `opencode catalogs decode provider-qualified IDs and scope cwd to the selected machine`() {
+        val payload = """{"success":true,"availableModels":[{"modelId":"provider/model","name":"A Model"}],"currentModelId":"provider/model"}"""
+        server.enqueue(ok(payload))
+        val machine = runBlocking { session.api.getMachineOpencodeModels("windows", "C:\\Data\\Project A") }
+        val request = server.takeRequest()
+        assertEquals("/api/machines/windows/opencode-models", request.requestUrl!!.encodedPath)
+        assertEquals("C:\\Data\\Project A", request.requestUrl!!.queryParameter("cwd"))
+        assertEquals("provider/model", machine.availableModels.single().modelId)
+        assertEquals("A Model · provider", machine.availableModels.single().displayName)
+        server.enqueue(ok(payload))
+        val chat = runBlocking { session.api.getSessionOpencodeModels("session") }
+        assertEquals("/api/sessions/session/opencode-models", server.takeRequest().path)
+        assertEquals("provider/model", chat.currentModelId)
+    }
+
+    @Test
     fun `machine codex models decode and rpc_target_missing surfaces as coded ApiError`() {
         server.enqueue(
             ok(
